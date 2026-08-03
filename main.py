@@ -8,8 +8,18 @@ Phase 1: just instantiate the UI with a dummy state and start the
 Tkinter mainloop.
 """
 
-# TODO (Phase 1): from state import GameState / from ui import build_ui
-#   create a fresh dummy state, hand it to ui.py, run mainloop().
+import tkinter as tk
+
+from state import GameState
+from ui import build_ui
+
+
+def main():
+    state = GameState.new_game()
+    root = tk.Tk()
+    build_ui(root, state)
+    root.mainloop()
+
 
 if __name__ == "__main__":
-    pass
+    main()
