@@ -20,6 +20,10 @@ Layout (single window, grid-based):
 The scene image is a fixed IMAGE_SIZE x IMAGE_SIZE square — this mockup
 calibrates against a 640x640 source-image size at 2560x1440 desktop
 resolution, so generated art can target a known aspect ratio up front.
+The two side panels are elastic: they always fill whatever width is
+left in the window once the image claims its fixed IMAGE_SIZE, and
+their height is pinned to the image's (the window is resizable, but
+row 0 has no weight of its own — the image sets the row height).
 
 Phase 1 (this file): static layout, dummy stats/state, inert action
 buttons that print to console and echo a canned line into the result
@@ -54,11 +58,14 @@ DUMMY_ACTIONS = [
 
 def build_ui(root, state):
     root.title("Xianxia Cultivation Sim")
-    root.resizable(False, False)
 
-    root.columnconfigure(0, minsize=SIDE_PANEL_WIDTH)
-    root.columnconfigure(1, minsize=IMAGE_SIZE)
-    root.columnconfigure(2, minsize=SIDE_PANEL_WIDTH)
+    # Side panels are elastic (weight=1): they always fill whatever width
+    # is left over once the image column takes its fixed IMAGE_SIZE, and
+    # their height is pinned to the image row since row 0 has no weight
+    # of its own — the tallest cell (the scene image) sets it.
+    root.columnconfigure(0, weight=1, minsize=SIDE_PANEL_WIDTH)
+    root.columnconfigure(1, weight=0, minsize=IMAGE_SIZE)
+    root.columnconfigure(2, weight=1, minsize=SIDE_PANEL_WIDTH)
 
     _build_player_panel(root, state).grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
     _build_scene_panel(root, state).grid(row=0, column=1, sticky="nsew", padx=6, pady=6)
@@ -70,6 +77,9 @@ def build_ui(root, state):
     _build_bottom_section(root, result_text).grid(
         row=2, column=0, columnspan=3, sticky="ew", padx=6, pady=(0, 6)
     )
+
+    root.update_idletasks()
+    root.minsize(root.winfo_reqwidth(), root.winfo_reqheight())
 
 
 def _build_player_panel(root, state):
