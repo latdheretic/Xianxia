@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+# Save files are per-player runs, not source.
+save_data/*.json
