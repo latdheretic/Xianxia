@@ -36,6 +36,9 @@ class GameState:
     year: int = 1
     location: str = "Whispering Bamboo Grove"
     interacting_with: Optional[str] = None
+    in_combat: bool = False
+    opponent_health: int = 0
+    opponent_max_health: int = 0
     last_action_result: str = (
         "You awaken at the edge of the grove, unsure how you got here."
     )

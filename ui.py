@@ -5,22 +5,30 @@ Tkinter layout and widget wiring. Owns ONLY presentation — it calls
 into actions.py / state.py to do real work, and never the reverse.
 
 Layout (single window, grid-based):
-    +---------------------+------------------+------------------+
-    |  stats panel (TL)   |  scene image (TM)  |  menu (TR)     |
-    +---------------------+------------------+------------------+
+    +---------------+-------------------------+----------------+
+    |  player stats |                         |  world stats   |
+    |  (click for   |    scene image           |  (or opponent  |
+    |  details)     |    IMAGE_SIZE square     |  stats, if in  |
+    |               |                         |  combat)       |
+    +---------------+-------------------------+----------------+
     |  last action result (full width)                          |
     +--------------------------------------------------------------+
-    |  scrollable action list (bottom)                            |
-    |  each row: "<label>  —  <time cost>"                        |
+    |  scrollable action list             |  Main Menu (bottom-  |
+    |  each row: "<label> — <time cost>"  |  right, fixed)       |
     +--------------------------------------------------------------+
+
+The scene image is a fixed IMAGE_SIZE x IMAGE_SIZE square — this mockup
+calibrates against a 1024x1024 source-image size at 2560x1440 desktop
+resolution, so generated art can target a known aspect ratio up front.
 
 Phase 1 (this file): static layout, dummy stats/state, inert action
 buttons that print to console and echo a canned line into the result
-box. Stats panel is clickable and opens a detail popup. Menu button
-opens a popup with Save/Load/Quit stubs (Quit is real; the app has
-nowhere to save to yet).
+box. Player stats panel is clickable and opens a detail popup. Main
+Menu is just another bottom-row control (not a top corner button) so
+it reads as one of the available choices, always anchored bottom-right
+for consistency as the action list grows/shrinks.
 
-Phase 2+: wire action buttons to actions.py, refresh stats panel and
+Phase 2+: wire action buttons to actions.py, refresh stats panels and
 scene image after each action resolves via a single refresh_ui(state)
 entry point, and populate the action list from
 get_available_actions(state) instead of DUMMY_ACTIONS.
@@ -28,6 +36,11 @@ get_available_actions(state) instead of DUMMY_ACTIONS.
 
 import tkinter as tk
 from tkinter import ttk
+
+IMAGE_SIZE = 1024
+SIDE_PANEL_WIDTH = 300
+ACTIONS_HEIGHT = 200
+MENU_COLUMN_WIDTH = 160
 
 DUMMY_ACTIONS = [
     ("Travel to the village", "2 days"),
@@ -41,35 +54,30 @@ DUMMY_ACTIONS = [
 
 def build_ui(root, state):
     root.title("Xianxia Cultivation Sim")
-    root.geometry("960x680")
-    root.minsize(800, 560)
+    root.resizable(False, False)
 
-    root.columnconfigure(0, weight=1)
-    root.columnconfigure(1, weight=2)
-    root.columnconfigure(2, weight=1)
-    root.rowconfigure(0, weight=0)
-    root.rowconfigure(1, weight=0)
-    root.rowconfigure(2, weight=1)
+    root.columnconfigure(0, minsize=SIDE_PANEL_WIDTH)
+    root.columnconfigure(1, minsize=IMAGE_SIZE)
+    root.columnconfigure(2, minsize=SIDE_PANEL_WIDTH)
 
-    _build_stats_panel(root, state).grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+    _build_player_panel(root, state).grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
     _build_scene_panel(root, state).grid(row=0, column=1, sticky="nsew", padx=6, pady=6)
-    _build_menu_panel(root).grid(row=0, column=2, sticky="nsew", padx=6, pady=6)
+    _build_right_panel(root, state).grid(row=0, column=2, sticky="nsew", padx=6, pady=6)
 
     result_text = _build_result_box(root, state)
     result_text.grid(row=1, column=0, columnspan=3, sticky="ew", padx=6, pady=(0, 6))
 
-    _build_action_list(root, result_text).grid(
-        row=2, column=0, columnspan=3, sticky="nsew", padx=6, pady=(0, 6)
+    _build_bottom_section(root, result_text).grid(
+        row=2, column=0, columnspan=3, sticky="ew", padx=6, pady=(0, 6)
     )
 
 
-def _build_stats_panel(root, state):
-    frame = ttk.LabelFrame(root, text="Stats (click for details)")
+def _build_player_panel(root, state):
+    frame = ttk.LabelFrame(root, text="Player (click for details)")
 
     rows = [
         ("Name", state.name),
         ("Stage", state.stage),
-        ("Date", state.date_str),
         ("Health", f"{state.health} / {state.max_health}"),
         ("Qi", f"{state.qi} / {state.max_qi}"),
         ("Spirit Stones", str(state.currency)),
@@ -112,25 +120,58 @@ def _open_stat_details(root, state):
     )
 
 
+def _build_right_panel(root, state):
+    if state.in_combat:
+        return _build_opponent_panel(root, state)
+    return _build_world_panel(root, state)
+
+
+def _build_world_panel(root, state):
+    frame = ttk.LabelFrame(root, text="World")
+
+    rows = [
+        ("Date", state.date_str),
+        ("Location", state.location),
+    ]
+    for i, (label, value) in enumerate(rows):
+        ttk.Label(frame, text=f"{label}:").grid(row=i, column=0, sticky="w", padx=4, pady=1)
+        ttk.Label(frame, text=value).grid(row=i, column=1, sticky="w", padx=4, pady=1)
+
+    return frame
+
+
+def _build_opponent_panel(root, state):
+    frame = ttk.LabelFrame(root, text="Opponent")
+
+    rows = [
+        ("Name", state.interacting_with or "Unknown"),
+        ("Health", f"{state.opponent_health} / {state.opponent_max_health}"),
+    ]
+    for i, (label, value) in enumerate(rows):
+        ttk.Label(frame, text=f"{label}:").grid(row=i, column=0, sticky="w", padx=4, pady=1)
+        ttk.Label(frame, text=value).grid(row=i, column=1, sticky="w", padx=4, pady=1)
+
+    return frame
+
+
 def _build_scene_panel(root, state):
     frame = ttk.LabelFrame(root, text="Scene")
     frame.columnconfigure(0, weight=1)
     frame.rowconfigure(0, weight=1)
 
     subject = state.interacting_with or state.location
-    canvas = tk.Canvas(frame, width=320, height=280, background="#3a3a3a", highlightthickness=0)
+    canvas = tk.Canvas(
+        frame, width=IMAGE_SIZE, height=IMAGE_SIZE, background="#3a3a3a", highlightthickness=0
+    )
     canvas.create_text(
-        160, 140, text=f"[{subject}]", fill="white", width=280, justify="center"
+        IMAGE_SIZE // 2,
+        IMAGE_SIZE // 2,
+        text=f"[{subject}]",
+        fill="white",
+        width=IMAGE_SIZE - 40,
+        justify="center",
     )
     canvas.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
-    return frame
-
-
-def _build_menu_panel(root):
-    frame = ttk.LabelFrame(root, text="Menu")
-    ttk.Button(frame, text="Main Menu", command=lambda: _open_main_menu(root)).pack(
-        padx=8, pady=8
-    )
     return frame
 
 
@@ -169,12 +210,30 @@ def _set_result_text(text_widget, message):
     text_widget.configure(state="disabled")
 
 
+def _build_bottom_section(root, result_text):
+    outer = ttk.Frame(root)
+    outer.columnconfigure(0, weight=1)
+    outer.columnconfigure(1, minsize=MENU_COLUMN_WIDTH)
+    outer.rowconfigure(0, minsize=ACTIONS_HEIGHT)
+
+    _build_action_list(outer, result_text).grid(row=0, column=0, sticky="nsew")
+    _build_menu_button(outer, root).grid(row=0, column=1, sticky="se", padx=(6, 0))
+
+    return outer
+
+
+def _build_menu_button(parent, root):
+    frame = ttk.Frame(parent)
+    ttk.Button(frame, text="Main Menu", command=lambda: _open_main_menu(root)).pack()
+    return frame
+
+
 def _build_action_list(root, result_text):
     outer = ttk.LabelFrame(root, text="Actions")
     outer.rowconfigure(0, weight=1)
     outer.columnconfigure(0, weight=1)
 
-    canvas = tk.Canvas(outer, highlightthickness=0)
+    canvas = tk.Canvas(outer, height=ACTIONS_HEIGHT, highlightthickness=0)
     scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
     inner = ttk.Frame(canvas)
 
