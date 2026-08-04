@@ -18,7 +18,7 @@ Layout (single window, grid-based):
     +--------------------------------------------------------------+
 
 The scene image is a fixed IMAGE_SIZE x IMAGE_SIZE square — this mockup
-calibrates against a 1024x1024 source-image size at 2560x1440 desktop
+calibrates against a 640x640 source-image size at 2560x1440 desktop
 resolution, so generated art can target a known aspect ratio up front.
 
 Phase 1 (this file): static layout, dummy stats/state, inert action
@@ -37,7 +37,7 @@ get_available_actions(state) instead of DUMMY_ACTIONS.
 import tkinter as tk
 from tkinter import ttk
 
-IMAGE_SIZE = 1024
+IMAGE_SIZE = 640
 SIDE_PANEL_WIDTH = 300
 ACTIONS_HEIGHT = 200
 MENU_COLUMN_WIDTH = 160
