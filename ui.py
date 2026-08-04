@@ -39,8 +39,10 @@ bottom-right Main Menu button swaps to the menu, and Back swaps
 return. All screens are built at the same scale and placed in the
 same box, so they follow identical dimension rules.
 
-The menu offers Continue Game (back to the run in progress), Load Game
-(pick any run in the save directory), New Game and Exit. There is no
+The game boots into SCREEN_MENU, which carries the game title above the
+options: Continue Game (back to the run in progress), Load Game (pick
+any run in the save directory), New Game and Exit. Continue Game is
+disabled until a run has actually been started or loaded. There is no
 Save command by design: runs persist automatically (see state.py), so
 saving is never a thing the player has to remember to do.
 
@@ -75,6 +77,7 @@ BASE_MENU_COLUMN_WIDTH = 150
 BASE_PADDING = 6
 BASE_FONT_SIZE = 12
 BASE_HEADING_FONT_SIZE = 18
+BASE_TITLE_FONT_SIZE = 34
 BASE_SAVE_LIST_HEIGHT = 260
 MIN_VALUE_WRAP = 60  # never wrap a stat value narrower than this
 MENU_BUTTON_WIDTH = 22  # characters, so it tracks the scaled font
@@ -89,6 +92,8 @@ SCREEN_LOAD = "load_game"
 
 MENU_BUTTON_STYLE = "Menu.TButton"
 
+GAME_TITLE = "Xianxia Cultivation Simulator"  # working title
+
 DUMMY_ACTIONS = [
     ("Travel to the village", "2 days"),
     ("Rest", "8 hours"),
@@ -100,19 +105,24 @@ DUMMY_ACTIONS = [
 
 
 def build_ui(root, state):
-    root.title("Xianxia Cultivation Sim")
+    root.title(GAME_TITLE)
     root.configure(background=ttk.Style().lookup("TFrame", "background"))
 
+    # Measured from the main screen even though the menu is shown first:
+    # the game layout is what the window has to be big enough to hold.
     base_width, base_height = _measure_natural_size(root, state)
     root.minsize(round(base_width * MIN_SCALE), round(base_height * MIN_SCALE))
 
     # "state" lives here rather than in the enclosing argument because New
     # Game replaces the whole GameState; every rebuild reads the current one.
+    # "run_active" is what Continue Game needs: at boot there is no run yet,
+    # only the placeholder state the main screen is measured against.
     layout = {
         "content": None,
         "resize_job": None,
-        "screen": SCREEN_MAIN,
+        "screen": SCREEN_MENU,
         "state": state,
+        "run_active": False,
     }
 
     def apply_layout(window_w, window_h):
@@ -127,7 +137,13 @@ def build_ui(root, state):
         if layout["content"] is not None:
             layout["content"].destroy()
         content = _build_screen(
-            root, layout["state"], scale, layout["screen"], show_screen, commands
+            root,
+            layout["state"],
+            scale,
+            layout["screen"],
+            show_screen,
+            commands,
+            layout["run_active"],
         )
         content.place(
             relx=0.5, rely=0.5, anchor="center", width=content_width, height=content_height
@@ -142,11 +158,12 @@ def build_ui(root, state):
         # Phase 3: create this run's save file here too, so autosave has a
         # target from the very first action.
         layout["state"] = GameState.new_game()
+        layout["run_active"] = True
         show_screen(SCREEN_MAIN)
 
     def load_game(slot):
-        # Phase 3: layout["state"] = load_from_file(slot.path), then
-        # show_screen(SCREEN_MAIN).
+        # Phase 3: layout["state"] = load_from_file(slot.path), set
+        # run_active, then show_screen(SCREEN_MAIN).
         print(f"[stub] Load game — {slot.path} (loading lands in Phase 3)")
 
     commands = {
@@ -182,12 +199,12 @@ def build_ui(root, state):
     apply_layout(base_width, base_height)
 
 
-def _build_screen(root, state, scale, screen, show_screen, commands):
+def _build_screen(root, state, scale, screen, show_screen, commands, run_active):
     """Screens share the window and the same scale/dimension rules."""
     if screen == SCREEN_CHARACTER:
         return _build_character_screen(root, state, scale, show_screen)
     if screen == SCREEN_MENU:
-        return _build_menu_screen(root, scale, show_screen, commands)
+        return _build_menu_screen(root, scale, show_screen, commands, run_active)
     if screen == SCREEN_LOAD:
         return _build_load_screen(root, scale, show_screen, commands)
     return _build_content(root, state, scale, show_screen)
@@ -448,14 +465,16 @@ def _menu_button_style(font):
     return MENU_BUTTON_STYLE
 
 
-def _build_menu_screen(root, scale, show_screen, commands):
+def _build_menu_screen(root, scale, show_screen, commands, run_active):
     """The main menu as an in-window screen — never a Toplevel popup.
 
-    No Save entry: runs autosave after every action (see state.py), so
-    the menu is only ever about which run you are playing.
+    This is also the screen the game boots into, so it carries the game
+    title above the options. No Save entry: runs autosave after every
+    action (see state.py), so the menu is only ever about which run you
+    are playing.
     """
     font = (FONT_FAMILY, max(6, round(BASE_FONT_SIZE * scale)))
-    heading_font = (FONT_FAMILY, max(8, round(BASE_HEADING_FONT_SIZE * scale)), "bold")
+    title_font = (FONT_FAMILY, max(10, round(BASE_TITLE_FONT_SIZE * scale)), "bold")
     padding = max(2, round(BASE_PADDING * scale))
     style = _menu_button_style(font)
 
@@ -468,10 +487,14 @@ def _build_menu_screen(root, scale, show_screen, commands):
     box = ttk.Frame(content)
     box.grid(row=1, column=0)
 
-    ttk.Label(box, text="Main Menu", font=heading_font).pack(pady=(0, padding * 4))
+    ttk.Label(box, text=GAME_TITLE, font=title_font, anchor="center").pack(
+        pady=(0, padding * 6)
+    )
 
     entries = [
-        ("Continue Game", lambda: show_screen(SCREEN_MAIN), True),
+        # Continue is dead at boot: nothing has been started or loaded yet.
+        # Phase 3: also enable it when a save exists, and load the newest.
+        ("Continue Game", lambda: show_screen(SCREEN_MAIN), run_active),
         ("Load Game", lambda: show_screen(SCREEN_LOAD), has_save_file()),
         ("New Game", commands["new_game"], True),
         ("Exit", commands["exit"], True),
