@@ -1,4 +1,4 @@
-# Project: Xianxia Cultivation Sim (working title)
+# Project: Xianxia Cultivation Simulator (working title)
 
 ## Overview
 Turn-based simulation RPG in the xianxia cultivation genre. Single-player,
@@ -7,9 +7,19 @@ by player-chosen actions that consume in-game time (from instant to months).
 
 ## Tech stack
 - Python 3 (stdlib only where possible)
-- Tkinter for UI (Pillow only if we need image formats beyond PNG/GIF)
+- Tkinter for UI
+- Pillow — the one third-party dependency. Not for formats (Tk 8.6 reads
+  PNG natively) but for *resampling*: `tk.PhotoImage` can only rescale by
+  whole-number ratios with nearest-neighbour sampling, which is too slow
+  and too ugly to fit art to an arbitrary window size. See
+  requirements.txt. The game degrades gracefully without it.
 - JSON for save files (human-readable, easy to debug/patch by hand)
 - No external game engine, no network, no database
+
+## Assets
+- `images/system/` — chrome that belongs to the game itself (menu
+  backgrounds etc.); see the README there for ratio/cropping rules.
+- Scene/location art gets its own home under `images/` in Phase 4.
 
 ## Layout (Tkinter grid, single window)
 - Top-left: stats panel (name, cultivation stage, qi, health, age, etc.)

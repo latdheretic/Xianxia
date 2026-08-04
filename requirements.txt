@@ -1,0 +1,13 @@
+# Pillow is the only third-party dependency.
+#
+# Tkinter reads PNG on its own (Tk 8.6), but tk.PhotoImage can only rescale
+# by whole-number ratios with nearest-neighbour sampling — no good for
+# fitting a photographic background to an arbitrary window size. Pillow
+# does the resampling (and will do the same job for scene images in
+# Phase 4). Without it the game still runs; the menu just falls back to a
+# flat colour.
+#
+# Debian/Ubuntu system Python: apt install python3-pil python3-pil.imagetk
+# (ImageTk ships as its own package — installing python3-pil alone is not
+# enough, and the failure looks like PIL importing fine but ImageTk not).
+Pillow>=10.0

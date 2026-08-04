@@ -46,6 +46,14 @@ disabled until a run has actually been started or loaded. There is no
 Save command by design: runs persist automatically (see state.py), so
 saving is never a thing the player has to remember to do.
 
+The menu is drawn on a background image (images/system/main_menu.png)
+scaled to cover the whole window — it is the one screen that ignores
+the letterbox and reaches the window edges. That screen is a Canvas
+rather than a frame because Tk has no widget transparency: any ttk
+container in front of the image would paint over it. Scaling needs
+Pillow; without it the menu falls back to a flat colour and everything
+else is unaffected.
+
 Phase 1 (this file): static layout, dummy stats/state, inert action
 buttons that print to console and echo a canned line into the result
 box. Player stats panel is clickable and opens the character sheet.
@@ -60,9 +68,17 @@ get_available_actions(state) instead of DUMMY_ACTIONS.
 """
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 
 from state import GameState, has_save_file, list_saves
+
+try:
+    from PIL import Image, ImageOps, ImageTk
+
+    PIL_AVAILABLE = True
+except ImportError:  # the menu falls back to a flat colour without Pillow
+    PIL_AVAILABLE = False
 
 MIN_RATIO = 4 / 3  # older 4:3 monitors
 MAX_RATIO = 16 / 9  # standard widescreen
@@ -80,8 +96,22 @@ BASE_HEADING_FONT_SIZE = 18
 BASE_TITLE_FONT_SIZE = 34
 BASE_SAVE_LIST_HEIGHT = 260
 MIN_VALUE_WRAP = 60  # never wrap a stat value narrower than this
-MENU_BUTTON_WIDTH = 22  # characters, so it tracks the scaled font
 FONT_FAMILY = "TkDefaultFont"
+
+# Menu buttons are laid out by hand on the background canvas (a ttk frame
+# would paint an opaque slab over the image), so their box is in pixels.
+BASE_MENU_BUTTON_WIDTH = 260
+BASE_MENU_BUTTON_HEIGHT = 38
+BASE_MENU_BUTTON_GAP = 10
+BASE_MENU_TITLE_GAP = 44
+
+IMAGE_DIR = Path(__file__).resolve().parent / "images"
+SYSTEM_IMAGE_DIR = IMAGE_DIR / "system"
+MENU_BACKGROUND_PATH = SYSTEM_IMAGE_DIR / "main_menu.png"
+
+MENU_FALLBACK_BG = "#161a24"  # shown when the background image is unavailable
+MENU_TITLE_FG = "#f7f1e3"
+MENU_TITLE_SHADOW = "#0b0d16"
 
 RESIZE_DEBOUNCE_MS = 120
 
@@ -134,6 +164,12 @@ def build_ui(root, state):
         # show more actions, not padding. Width still letterboxes.
         content_height = max(round(base_height * scale), window_h)
 
+        if layout["screen"] == SCREEN_MENU:
+            # The menu has no fixed-ratio layout to protect, and its
+            # background is meant to reach the window edges, so it takes
+            # the whole window instead of the letterboxed content box.
+            content_width, content_height = window_w, window_h
+
         if layout["content"] is not None:
             layout["content"].destroy()
         content = _build_screen(
@@ -144,6 +180,7 @@ def build_ui(root, state):
             show_screen,
             commands,
             layout["run_active"],
+            (content_width, content_height),
         )
         content.place(
             relx=0.5, rely=0.5, anchor="center", width=content_width, height=content_height
@@ -199,12 +236,12 @@ def build_ui(root, state):
     apply_layout(base_width, base_height)
 
 
-def _build_screen(root, state, scale, screen, show_screen, commands, run_active):
+def _build_screen(root, state, scale, screen, show_screen, commands, run_active, size):
     """Screens share the window and the same scale/dimension rules."""
     if screen == SCREEN_CHARACTER:
         return _build_character_screen(root, state, scale, show_screen)
     if screen == SCREEN_MENU:
-        return _build_menu_screen(root, scale, show_screen, commands, run_active)
+        return _build_menu_screen(root, scale, show_screen, commands, run_active, size)
     if screen == SCREEN_LOAD:
         return _build_load_screen(root, scale, show_screen, commands)
     return _build_content(root, state, scale, show_screen)
@@ -465,31 +502,109 @@ def _menu_button_style(font):
     return MENU_BUTTON_STYLE
 
 
-def _build_menu_screen(root, scale, show_screen, commands, run_active):
+# Decoding the source on every resize would be wasteful, and dropping the
+# PhotoImage on the floor would make Tk render nothing at all, so both the
+# source image and the current scaled copy are held here.
+_BACKGROUND_CACHE = {"path": None, "source": None, "size": None, "photo": None}
+_WARNED = set()
+
+
+def _warn_once(key, message):
+    if key not in _WARNED:
+        _WARNED.add(key)
+        print(message)
+
+
+def _menu_background(width, height):
+    """The menu background, scaled to cover a width x height window.
+
+    Cover, not stretch: the image is scaled until it fills the window and
+    the overflow is cropped off centre. For a 16:9 source in anything
+    narrower — down to the 4:3 the layout supports — that means it fits
+    vertically and loses the sides, which is why the sides of the art are
+    not meant to carry anything important. A window wider than the source
+    fills edge to edge and trims a little off the top and bottom instead,
+    rather than leaving bars.
+
+    Returns None when there is nothing to draw; callers fall back to a
+    flat colour.
+    """
+    if width <= 0 or height <= 0:
+        return None
+    if not PIL_AVAILABLE:
+        _warn_once(
+            "pillow",
+            "[ui] Pillow is not installed — menu background disabled "
+            "(pip install Pillow).",
+        )
+        return None
+    if not MENU_BACKGROUND_PATH.is_file():
+        _warn_once(
+            "missing",
+            f"[ui] No menu background at {MENU_BACKGROUND_PATH} — using a flat colour.",
+        )
+        return None
+
+    cache = _BACKGROUND_CACHE
+    if cache["path"] != MENU_BACKGROUND_PATH or cache["source"] is None:
+        cache["source"] = Image.open(MENU_BACKGROUND_PATH).convert("RGB")
+        cache["path"] = MENU_BACKGROUND_PATH
+        cache["size"] = None
+
+    if cache["size"] != (width, height):
+        # ImageOps.fit is exactly cover + centre crop.
+        fitted = ImageOps.fit(
+            cache["source"], (width, height), method=Image.LANCZOS, centering=(0.5, 0.5)
+        )
+        cache["photo"] = ImageTk.PhotoImage(fitted)
+        cache["size"] = (width, height)
+
+    return cache["photo"]
+
+
+def _build_menu_screen(root, scale, show_screen, commands, run_active, size):
     """The main menu as an in-window screen — never a Toplevel popup.
 
     This is also the screen the game boots into, so it carries the game
     title above the options. No Save entry: runs autosave after every
     action (see state.py), so the menu is only ever about which run you
     are playing.
+
+    The screen *is* the background canvas. Tk has no widget transparency
+    — any ttk frame in front of the image would paint an opaque slab over
+    it — so the title is drawn as a canvas item and the buttons are
+    positioned individually with create_window. That means laying the
+    block out by hand, hence the pixel geometry below. `size` is the
+    window size the caller is about to place this screen at; the canvas
+    can't measure itself before it is mapped.
     """
+    width, height = size
     font = (FONT_FAMILY, max(6, round(BASE_FONT_SIZE * scale)))
-    title_font = (FONT_FAMILY, max(10, round(BASE_TITLE_FONT_SIZE * scale)), "bold")
-    padding = max(2, round(BASE_PADDING * scale))
+    title_size = max(10, round(BASE_TITLE_FONT_SIZE * scale))
+    title_font = (FONT_FAMILY, title_size, "bold")
     style = _menu_button_style(font)
 
-    content = ttk.Frame(root)
-    content.columnconfigure(0, weight=1)
-    # Empty weighted rows above and below keep the menu vertically centred.
-    content.rowconfigure(0, weight=1)
-    content.rowconfigure(2, weight=1)
+    button_width = round(BASE_MENU_BUTTON_WIDTH * scale)
+    button_height = round(BASE_MENU_BUTTON_HEIGHT * scale)
+    button_gap = round(BASE_MENU_BUTTON_GAP * scale)
+    title_gap = round(BASE_MENU_TITLE_GAP * scale)
+    title_height = round(title_size * 1.4)
 
-    box = ttk.Frame(content)
-    box.grid(row=1, column=0)
-
-    ttk.Label(box, text=GAME_TITLE, font=title_font, anchor="center").pack(
-        pady=(0, padding * 6)
+    canvas = tk.Canvas(
+        root,
+        width=width,
+        height=height,
+        highlightthickness=0,
+        borderwidth=0,
+        background=MENU_FALLBACK_BG,
     )
+
+    photo = _menu_background(width, height)
+    if photo is not None:
+        canvas.create_image(0, 0, anchor="nw", image=photo)
+        # Tk keeps no reference of its own; without this the image is
+        # garbage collected and the canvas draws blank.
+        canvas.image = photo
 
     entries = [
         # Continue is dead at boot: nothing has been started or loaded yet.
@@ -499,15 +614,36 @@ def _build_menu_screen(root, scale, show_screen, commands, run_active):
         ("New Game", commands["new_game"], True),
         ("Exit", commands["exit"], True),
     ]
-    for label, command, enabled in entries:
-        button = ttk.Button(
-            box, text=label, command=command, style=style, width=MENU_BUTTON_WIDTH
+
+    block_height = (
+        title_height
+        + title_gap
+        + len(entries) * button_height
+        + (len(entries) - 1) * button_gap
+    )
+    centre_x = width / 2
+    top = (height - block_height) / 2
+
+    # Drawn twice: the art behind it is arbitrary, so the title needs its
+    # own contrast rather than trusting the image to be dark.
+    offset = max(1, round(2 * scale))
+    title_y = top + title_height / 2
+    for dx, dy, colour in ((offset, offset, MENU_TITLE_SHADOW), (0, 0, MENU_TITLE_FG)):
+        canvas.create_text(
+            centre_x + dx, title_y + dy, text=GAME_TITLE, font=title_font, fill=colour
         )
+
+    y = top + title_height + title_gap
+    for label, command, enabled in entries:
+        button = ttk.Button(canvas, text=label, command=command, style=style)
         if not enabled:
             button.state(["disabled"])
-        button.pack(pady=padding)
+        canvas.create_window(
+            centre_x, y, window=button, anchor="n", width=button_width, height=button_height
+        )
+        y += button_height + button_gap
 
-    return content
+    return canvas
 
 
 def _build_load_screen(root, scale, show_screen, commands):
