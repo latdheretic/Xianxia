@@ -16,12 +16,13 @@ Background for the main menu screen.
   that matters**. A window wider than 16:9 fills edge to edge and trims
   a little off the top and bottom instead.
 - **Contrast:** the title and the menu buttons sit over the middle of the
-  image. The title is drawn light with a dark drop shadow, so it survives
-  a busy background, but a darker centre still reads best.
+  image. The title is drawn black with a light halo behind it, matched to
+  the current pale ink-wash art — so a light centre reads best. Art with
+  a dark centre would want `MENU_TITLE_FG` / `MENU_TITLE_HALO` in `ui.py`
+  swapped back the other way.
 - **Format:** PNG. JPEG also works now that Pillow is a dependency, and
   is much smaller for photographic art — if you switch, update
   `MENU_BACKGROUND_PATH` in `ui.py`.
 
-The file currently committed here is a placeholder, generated rather than
-drawn. Replacing it with real art needs no code change, as long as the
-name stays the same.
+Replacing the art needs no code change, as long as the name stays the
+same.

@@ -109,9 +109,11 @@ IMAGE_DIR = Path(__file__).resolve().parent / "images"
 SYSTEM_IMAGE_DIR = IMAGE_DIR / "system"
 MENU_BACKGROUND_PATH = SYSTEM_IMAGE_DIR / "main_menu.png"
 
-MENU_FALLBACK_BG = "#161a24"  # shown when the background image is unavailable
-MENU_TITLE_FG = "#f7f1e3"
-MENU_TITLE_SHADOW = "#0b0d16"
+# Shown when the background image is unavailable. Light, because the title
+# is black — a dark fallback would render it unreadable.
+MENU_FALLBACK_BG = "#e9e3d5"
+MENU_TITLE_FG = "#000000"
+MENU_TITLE_HALO = "#f4efe2"  # paper tone, to lift the title off dark foliage
 
 RESIZE_DEBOUNCE_MS = 120
 
@@ -624,14 +626,24 @@ def _build_menu_screen(root, scale, show_screen, commands, run_active, size):
     centre_x = width / 2
     top = (height - block_height) / 2
 
-    # Drawn twice: the art behind it is arbitrary, so the title needs its
-    # own contrast rather than trusting the image to be dark.
+    # A light halo goes down first, then the black title over it. The art
+    # is a pale ink wash, but the band the title crosses carries dark
+    # foliage and ridgelines, so the text needs its own separation instead
+    # of trusting the background to stay light. Four diagonal offsets
+    # rather than one drop shadow, so it reads the same on every side.
     offset = max(1, round(2 * scale))
     title_y = top + title_height / 2
-    for dx, dy, colour in ((offset, offset, MENU_TITLE_SHADOW), (0, 0, MENU_TITLE_FG)):
+    for dx, dy in ((-offset, -offset), (offset, -offset), (-offset, offset), (offset, offset)):
         canvas.create_text(
-            centre_x + dx, title_y + dy, text=GAME_TITLE, font=title_font, fill=colour
+            centre_x + dx,
+            title_y + dy,
+            text=GAME_TITLE,
+            font=title_font,
+            fill=MENU_TITLE_HALO,
         )
+    canvas.create_text(
+        centre_x, title_y, text=GAME_TITLE, font=title_font, fill=MENU_TITLE_FG
+    )
 
     y = top + title_height + title_gap
     for label, command, enabled in entries:
