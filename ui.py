@@ -114,17 +114,29 @@ def build_ui(root, state):
         layout["screen"] = name
         apply_layout(root.winfo_width(), root.winfo_height())
 
+    def on_resize_timeout():
+        layout["resize_job"] = None
+        if root.winfo_exists():
+            apply_layout(root.winfo_width(), root.winfo_height())
+
+    def cancel_pending_resize():
+        if layout["resize_job"] is not None:
+            root.after_cancel(layout["resize_job"])
+            layout["resize_job"] = None
+
     def on_configure(event):
         if event.widget is not root:
             return
-        if layout["resize_job"] is not None:
-            root.after_cancel(layout["resize_job"])
-        layout["resize_job"] = root.after(
-            RESIZE_DEBOUNCE_MS,
-            lambda: apply_layout(root.winfo_width(), root.winfo_height()),
-        )
+        cancel_pending_resize()
+        layout["resize_job"] = root.after(RESIZE_DEBOUNCE_MS, on_resize_timeout)
+
+    def on_destroy(event):
+        # Otherwise a debounce still in flight fires against a dead window.
+        if event.widget is root:
+            cancel_pending_resize()
 
     root.bind("<Configure>", on_configure)
+    root.bind("<Destroy>", on_destroy)
     root.geometry(f"{base_width}x{base_height}")
     apply_layout(base_width, base_height)
 
