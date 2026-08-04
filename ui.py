@@ -21,13 +21,21 @@ Scale-to-fit + letterbox: the whole layout above ("content") is built
 at a BASE_* pixel/font scale, measured once, then re-built at
 scale = window_size / that base size on every resize. Content between
 4:3 and 16:9 fills the window edge to edge (side panels absorb the
-extra width, same as before). Outside that family — an ultrawide or
-a very tall/narrow window — the content is capped at whichever of
-4:3/16:9 it's approaching and centered, leaving blank window
-background on the excess edges rather than distorting anything.
-Scale is clamped to [MIN_SCALE, MAX_SCALE] as the "minimum/maximum
-workable resolution"; root.minsize() keeps the window from ever being
-shrunk past what MIN_SCALE needs.
+extra width, same as before). A wider window — ultrawide and up —
+caps the content at 16:9 and centers it, leaving blank window
+background on the left/right rather than distorting anything.
+Surplus *height*, by contrast, is not letterboxed: it is handed to
+the action list, so a tall or square window simply shows more actions
+before it needs to scroll. Scale is clamped to [MIN_SCALE, MAX_SCALE]
+as the "minimum/maximum workable resolution"; root.minsize() keeps
+the window from ever being shrunk past what MIN_SCALE needs.
+
+Screens: the window hosts one screen at a time (SCREEN_MAIN, the
+layout drawn above, and SCREEN_CHARACTER, the full character sheet).
+Clicking the player stats panel swaps the window to the character
+sheet in place — no second window — and its Back button swaps
+returns. Both screens are built at the same scale and placed in the
+same box, so they follow identical dimension rules.
 
 Phase 1 (this file): static layout, dummy stats/state, inert action
 buttons that print to console and echo a canned line into the result
@@ -57,9 +65,14 @@ BASE_ACTIONS_HEIGHT = 180
 BASE_MENU_COLUMN_WIDTH = 150
 BASE_PADDING = 6
 BASE_FONT_SIZE = 12
+BASE_HEADING_FONT_SIZE = 18
+BASE_SHEET_WRAP = 420
 FONT_FAMILY = "TkDefaultFont"
 
 RESIZE_DEBOUNCE_MS = 120
+
+SCREEN_MAIN = "main"
+SCREEN_CHARACTER = "character_sheet"
 
 DUMMY_ACTIONS = [
     ("Travel to the village", "2 days"),
@@ -78,17 +91,28 @@ def build_ui(root, state):
     base_width, base_height = _measure_natural_size(root, state)
     root.minsize(round(base_width * MIN_SCALE), round(base_height * MIN_SCALE))
 
-    layout = {"content": None, "resize_job": None}
+    layout = {"content": None, "resize_job": None, "screen": SCREEN_MAIN}
 
     def apply_layout(window_w, window_h):
         scale, content_width = _compute_scale_and_width(
             window_w, window_h, base_width, base_height
         )
+        # Surplus height goes to the content (and from there to the action
+        # list) instead of becoming letterbox bars — a tall window should
+        # show more actions, not padding. Width still letterboxes.
+        content_height = max(round(base_height * scale), window_h)
+
         if layout["content"] is not None:
             layout["content"].destroy()
-        content = _build_content(root, state, scale)
-        content.place(relx=0.5, rely=0.5, anchor="center", width=content_width)
+        content = _build_screen(root, state, scale, layout["screen"], show_screen)
+        content.place(
+            relx=0.5, rely=0.5, anchor="center", width=content_width, height=content_height
+        )
         layout["content"] = content
+
+    def show_screen(name):
+        layout["screen"] = name
+        apply_layout(root.winfo_width(), root.winfo_height())
 
     def on_configure(event):
         if event.widget is not root:
@@ -105,8 +129,15 @@ def build_ui(root, state):
     apply_layout(base_width, base_height)
 
 
+def _build_screen(root, state, scale, screen, show_screen):
+    """Screens share the window and the same scale/dimension rules."""
+    if screen == SCREEN_CHARACTER:
+        return _build_character_screen(root, state, scale, show_screen)
+    return _build_content(root, state, scale, show_screen)
+
+
 def _measure_natural_size(root, state):
-    probe = _build_content(root, state, scale=1.0)
+    probe = _build_content(root, state, scale=1.0, show_screen=lambda name: None)
     probe.update_idletasks()
     width, height = probe.winfo_reqwidth(), probe.winfo_reqheight()
     probe.destroy()
@@ -138,7 +169,7 @@ def _compute_scale_and_width(window_w, window_h, base_width, base_height):
     return scale, round(content_width)
 
 
-def _build_content(root, state, scale):
+def _build_content(root, state, scale, show_screen):
     font_size = max(6, round(BASE_FONT_SIZE * scale))
     font = (FONT_FAMILY, font_size)
     image_size = round(BASE_IMAGE_SIZE * scale)
@@ -151,11 +182,14 @@ def _build_content(root, state, scale):
     content.columnconfigure(0, weight=1, minsize=side_panel_width)
     content.columnconfigure(1, weight=0, minsize=image_size)
     content.columnconfigure(2, weight=1, minsize=side_panel_width)
+    # Only the action row grows: extra window height becomes more visible
+    # actions rather than empty space above/below the layout.
+    content.rowconfigure(2, weight=1)
 
     # Values wrap rather than clip once a panel gets narrow at small scales.
     wrap = max(80, side_panel_width - round(90 * scale))
 
-    _build_player_panel(content, root, state, font, wrap).grid(
+    _build_player_panel(content, state, font, wrap, show_screen).grid(
         row=0, column=0, sticky="nsew", padx=padding, pady=padding
     )
     _build_scene_panel(content, state, image_size, font).grid(
@@ -170,12 +204,12 @@ def _build_content(root, state, scale):
 
     _build_bottom_section(
         content, root, result_text, font, actions_height, menu_column_width
-    ).grid(row=2, column=0, columnspan=3, sticky="ew", padx=padding, pady=(0, padding))
+    ).grid(row=2, column=0, columnspan=3, sticky="nsew", padx=padding, pady=(0, padding))
 
     return content
 
 
-def _build_player_panel(parent, root, state, font, wrap):
+def _build_player_panel(parent, state, font, wrap, show_screen):
     frame = ttk.LabelFrame(parent, text="Player (click for details)")
 
     rows = [
@@ -187,7 +221,7 @@ def _build_player_panel(parent, root, state, font, wrap):
     ]
     _fill_stat_rows(frame, rows, font, wrap)
 
-    _bind_click_recursive(frame, lambda event: _open_stat_details(root, state, font))
+    _bind_click_recursive(frame, lambda event: show_screen(SCREEN_CHARACTER))
     return frame
 
 
@@ -207,10 +241,28 @@ def _bind_click_recursive(widget, callback):
         _bind_click_recursive(child, callback)
 
 
-def _open_stat_details(root, state, font):
-    popup = tk.Toplevel(root)
-    popup.title("Character Sheet")
-    popup.geometry("320x340")
+def _build_character_screen(root, state, scale, show_screen):
+    """Full character sheet — an in-window screen, not a separate window.
+
+    Built at the same scale and placed in the same box as the main screen,
+    so it obeys the identical dimension rules.
+    """
+    font_size = max(6, round(BASE_FONT_SIZE * scale))
+    font = (FONT_FAMILY, font_size)
+    heading_font = (FONT_FAMILY, max(8, round(BASE_HEADING_FONT_SIZE * scale)), "bold")
+    padding = max(2, round(BASE_PADDING * scale))
+    wrap = max(120, round(BASE_SHEET_WRAP * scale))
+
+    content = ttk.Frame(root)
+    content.columnconfigure(0, weight=1)
+    content.rowconfigure(1, weight=1)
+
+    ttk.Label(content, text="Character Sheet", font=heading_font).grid(
+        row=0, column=0, sticky="w", padx=padding * 2, pady=(padding * 2, padding)
+    )
+
+    sheet = ttk.LabelFrame(content, text=state.name)
+    sheet.grid(row=1, column=0, sticky="nsew", padx=padding, pady=(0, padding))
 
     rows = [
         ("Name", state.name),
@@ -223,14 +275,22 @@ def _open_stat_details(root, state, font):
         ("Date", state.date_str),
     ]
     for i, (label, value) in enumerate(rows):
-        ttk.Label(popup, text=f"{label}:", font=font).grid(
-            row=i, column=0, sticky="w", padx=8, pady=4
+        ttk.Label(sheet, text=f"{label}:", font=font).grid(
+            row=i, column=0, sticky="nw", padx=padding * 2, pady=padding // 2 + 1
         )
-        ttk.Label(popup, text=value, font=font).grid(row=i, column=1, sticky="w", padx=8, pady=4)
+        ttk.Label(sheet, text=value, font=font, wraplength=wrap, justify="left").grid(
+            row=i, column=1, sticky="w", padx=padding * 2, pady=padding // 2 + 1
+        )
 
-    ttk.Button(popup, text="Close", command=popup.destroy).grid(
-        row=len(rows), column=0, columnspan=2, pady=8
+    # Back sits bottom-right, same corner the main screen puts Main Menu in.
+    footer = ttk.Frame(content)
+    footer.grid(row=2, column=0, sticky="ew", padx=padding, pady=(0, padding))
+    footer.columnconfigure(0, weight=1)
+    ttk.Button(footer, text="Back", command=lambda: show_screen(SCREEN_MAIN)).grid(
+        row=0, column=1, sticky="e"
     )
+
+    return content
 
 
 def _build_right_panel(parent, state, font, wrap):
@@ -322,7 +382,8 @@ def _build_bottom_section(parent, root, result_text, font, actions_height, menu_
     outer = ttk.Frame(parent)
     outer.columnconfigure(0, weight=1)
     outer.columnconfigure(1, minsize=menu_column_width)
-    outer.rowconfigure(0, minsize=actions_height)
+    # minsize is the floor; weight lets the row take any surplus height.
+    outer.rowconfigure(0, weight=1, minsize=actions_height)
 
     _build_action_list(outer, result_text, font, actions_height).grid(
         row=0, column=0, sticky="nsew"
