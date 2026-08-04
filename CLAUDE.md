@@ -57,8 +57,15 @@ testable before starting the next)
 - Prefer explicit, small functions over cleverness — this keeps token
   costs down when asking Claude Code to modify specific behavior later.
 
+## Save model (decided)
+Roguelike mentality: any risk you take could end a run, and the save
+file reflects that. State is persistent and written automatically after
+every resolved action — there is no manual Save command in the UI. The
+main menu is an in-window screen (never a popup) offering Continue Game
+(back to the run in progress), Load Game (pick any run in the save
+directory), New Game and Exit.
+
 ## Open questions / decide later
-- Autosave: every action vs. every N in-game days vs. manual save only?
 - Save file location: `save_data/` in project dir, or XDG-style
   `~/.local/share/<gamename>/`?
 - Interruption mechanic design (Phase 5) — not needed yet, just keep

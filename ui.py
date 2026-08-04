@@ -30,19 +30,26 @@ before it needs to scroll. Scale is clamped to [MIN_SCALE, MAX_SCALE]
 as the "minimum/maximum workable resolution"; root.minsize() keeps
 the window from ever being shrunk past what MIN_SCALE needs.
 
-Screens: the window hosts one screen at a time (SCREEN_MAIN, the
-layout drawn above, and SCREEN_CHARACTER, the full character sheet).
-Clicking the player stats panel swaps the window to the character
-sheet in place — no second window — and its Back button swaps
-returns. Both screens are built at the same scale and placed in the
+Screens: the window hosts one screen at a time — SCREEN_MAIN (the
+layout drawn above), SCREEN_CHARACTER (the full character sheet),
+SCREEN_MENU (the main menu) and SCREEN_LOAD (the save picker). Every
+screen swap happens in place; the app never opens a second window.
+Clicking the player stats panel swaps to the character sheet, the
+bottom-right Main Menu button swaps to the menu, and Back swaps
+return. All screens are built at the same scale and placed in the
 same box, so they follow identical dimension rules.
+
+The menu offers Continue Game (back to the run in progress), Load Game
+(pick any run in the save directory), New Game and Exit. There is no
+Save command by design: runs persist automatically (see state.py), so
+saving is never a thing the player has to remember to do.
 
 Phase 1 (this file): static layout, dummy stats/state, inert action
 buttons that print to console and echo a canned line into the result
-box. Player stats panel is clickable and opens a detail popup. Main
-Menu is just another bottom-row control (not a top corner button) so
-it reads as one of the available choices, always anchored bottom-right
-for consistency as the action list grows/shrinks.
+box. Player stats panel is clickable and opens the character sheet.
+Main Menu is just another bottom-row control (not a top corner button)
+so it reads as one of the available choices, always anchored
+bottom-right for consistency as the action list grows/shrinks.
 
 Phase 2+: wire action buttons to actions.py, refresh stats panels and
 scene image after each action resolves via a single refresh_ui(state)
@@ -52,6 +59,8 @@ get_available_actions(state) instead of DUMMY_ACTIONS.
 
 import tkinter as tk
 from tkinter import ttk
+
+from state import GameState, has_save_file, list_saves
 
 MIN_RATIO = 4 / 3  # older 4:3 monitors
 MAX_RATIO = 16 / 9  # standard widescreen
@@ -66,13 +75,19 @@ BASE_MENU_COLUMN_WIDTH = 150
 BASE_PADDING = 6
 BASE_FONT_SIZE = 12
 BASE_HEADING_FONT_SIZE = 18
+BASE_SAVE_LIST_HEIGHT = 260
 MIN_VALUE_WRAP = 60  # never wrap a stat value narrower than this
+MENU_BUTTON_WIDTH = 22  # characters, so it tracks the scaled font
 FONT_FAMILY = "TkDefaultFont"
 
 RESIZE_DEBOUNCE_MS = 120
 
 SCREEN_MAIN = "main"
 SCREEN_CHARACTER = "character_sheet"
+SCREEN_MENU = "main_menu"
+SCREEN_LOAD = "load_game"
+
+MENU_BUTTON_STYLE = "Menu.TButton"
 
 DUMMY_ACTIONS = [
     ("Travel to the village", "2 days"),
@@ -91,7 +106,14 @@ def build_ui(root, state):
     base_width, base_height = _measure_natural_size(root, state)
     root.minsize(round(base_width * MIN_SCALE), round(base_height * MIN_SCALE))
 
-    layout = {"content": None, "resize_job": None, "screen": SCREEN_MAIN}
+    # "state" lives here rather than in the enclosing argument because New
+    # Game replaces the whole GameState; every rebuild reads the current one.
+    layout = {
+        "content": None,
+        "resize_job": None,
+        "screen": SCREEN_MAIN,
+        "state": state,
+    }
 
     def apply_layout(window_w, window_h):
         scale, content_width = _compute_scale_and_width(
@@ -104,7 +126,9 @@ def build_ui(root, state):
 
         if layout["content"] is not None:
             layout["content"].destroy()
-        content = _build_screen(root, state, scale, layout["screen"], show_screen)
+        content = _build_screen(
+            root, layout["state"], scale, layout["screen"], show_screen, commands
+        )
         content.place(
             relx=0.5, rely=0.5, anchor="center", width=content_width, height=content_height
         )
@@ -113,6 +137,23 @@ def build_ui(root, state):
     def show_screen(name):
         layout["screen"] = name
         apply_layout(root.winfo_width(), root.winfo_height())
+
+    def start_new_game():
+        # Phase 3: create this run's save file here too, so autosave has a
+        # target from the very first action.
+        layout["state"] = GameState.new_game()
+        show_screen(SCREEN_MAIN)
+
+    def load_game(slot):
+        # Phase 3: layout["state"] = load_from_file(slot.path), then
+        # show_screen(SCREEN_MAIN).
+        print(f"[stub] Load game — {slot.path} (loading lands in Phase 3)")
+
+    commands = {
+        "new_game": start_new_game,
+        "load_game": load_game,
+        "exit": root.destroy,
+    }
 
     def on_resize_timeout():
         layout["resize_job"] = None
@@ -141,10 +182,14 @@ def build_ui(root, state):
     apply_layout(base_width, base_height)
 
 
-def _build_screen(root, state, scale, screen, show_screen):
+def _build_screen(root, state, scale, screen, show_screen, commands):
     """Screens share the window and the same scale/dimension rules."""
     if screen == SCREEN_CHARACTER:
         return _build_character_screen(root, state, scale, show_screen)
+    if screen == SCREEN_MENU:
+        return _build_menu_screen(root, scale, show_screen, commands)
+    if screen == SCREEN_LOAD:
+        return _build_load_screen(root, scale, show_screen, commands)
     return _build_content(root, state, scale, show_screen)
 
 
@@ -230,7 +275,7 @@ def _build_content(root, state, scale, show_screen):
     result_text.grid(row=1, column=0, columnspan=3, sticky="ew", padx=padding, pady=(0, padding))
 
     _build_bottom_section(
-        content, root, result_text, font, actions_height, menu_column_width
+        content, show_screen, result_text, font, actions_height, menu_column_width
     ).grid(row=2, column=0, columnspan=3, sticky="nsew", padx=padding, pady=(0, padding))
 
     return content
@@ -397,26 +442,126 @@ def _build_scene_panel(parent, state, image_size, font):
     return frame
 
 
-def _open_main_menu(root, font):
-    popup = tk.Toplevel(root)
-    popup.title("Main Menu")
-    popup.geometry("240x220")
+def _menu_button_style(font):
+    """ttk buttons take their font from a style, not a widget option."""
+    ttk.Style().configure(MENU_BUTTON_STYLE, font=font)
+    return MENU_BUTTON_STYLE
 
-    ttk.Button(popup, text="Resume", command=popup.destroy).pack(fill="x", padx=12, pady=6)
-    ttk.Button(
-        popup, text="Save Game", command=lambda: print("[stub] Save game clicked")
-    ).pack(fill="x", padx=12, pady=6)
-    ttk.Button(
-        popup, text="Load Game", command=lambda: print("[stub] Load game clicked")
-    ).pack(fill="x", padx=12, pady=6)
-    ttk.Button(
-        popup,
-        text="Load Different Game",
-        command=lambda: print("[stub] Load different game clicked"),
-    ).pack(fill="x", padx=12, pady=6)
-    ttk.Button(popup, text="Quit to Desktop", command=root.destroy).pack(
-        fill="x", padx=12, pady=6
+
+def _build_menu_screen(root, scale, show_screen, commands):
+    """The main menu as an in-window screen — never a Toplevel popup.
+
+    No Save entry: runs autosave after every action (see state.py), so
+    the menu is only ever about which run you are playing.
+    """
+    font = (FONT_FAMILY, max(6, round(BASE_FONT_SIZE * scale)))
+    heading_font = (FONT_FAMILY, max(8, round(BASE_HEADING_FONT_SIZE * scale)), "bold")
+    padding = max(2, round(BASE_PADDING * scale))
+    style = _menu_button_style(font)
+
+    content = ttk.Frame(root)
+    content.columnconfigure(0, weight=1)
+    # Empty weighted rows above and below keep the menu vertically centred.
+    content.rowconfigure(0, weight=1)
+    content.rowconfigure(2, weight=1)
+
+    box = ttk.Frame(content)
+    box.grid(row=1, column=0)
+
+    ttk.Label(box, text="Main Menu", font=heading_font).pack(pady=(0, padding * 4))
+
+    entries = [
+        ("Continue Game", lambda: show_screen(SCREEN_MAIN), True),
+        ("Load Game", lambda: show_screen(SCREEN_LOAD), has_save_file()),
+        ("New Game", commands["new_game"], True),
+        ("Exit", commands["exit"], True),
+    ]
+    for label, command, enabled in entries:
+        button = ttk.Button(
+            box, text=label, command=command, style=style, width=MENU_BUTTON_WIDTH
+        )
+        if not enabled:
+            button.state(["disabled"])
+        button.pack(pady=padding)
+
+    return content
+
+
+def _build_load_screen(root, scale, show_screen, commands):
+    """Save picker: lists the save directory, in-window like every screen."""
+    font = (FONT_FAMILY, max(6, round(BASE_FONT_SIZE * scale)))
+    heading_font = (FONT_FAMILY, max(8, round(BASE_HEADING_FONT_SIZE * scale)), "bold")
+    padding = max(2, round(BASE_PADDING * scale))
+    list_height = round(BASE_SAVE_LIST_HEIGHT * scale)
+    style = _menu_button_style(font)
+
+    slots = list_saves()
+
+    content = ttk.Frame(root)
+    content.columnconfigure(0, weight=1)
+    content.rowconfigure(1, weight=1)
+
+    ttk.Label(content, text="Load Game", font=heading_font).grid(
+        row=0, column=0, sticky="w", padx=padding * 2, pady=(padding * 2, padding)
     )
+
+    body = ttk.LabelFrame(content, text="Saved runs")
+    body.grid(row=1, column=0, sticky="nsew", padx=padding, pady=(0, padding))
+    body.columnconfigure(0, weight=1)
+    body.rowconfigure(0, weight=1)
+
+    save_list = None
+    if slots:
+        # tk.Listbox because ttk has no list widget; styled to match.
+        save_list = tk.Listbox(
+            body,
+            font=font,
+            height=max(3, list_height // max(1, font[1] * 2)),
+            activestyle="none",
+            highlightthickness=0,
+            exportselection=False,
+        )
+        for slot in slots:
+            save_list.insert("end", slot.label)
+        save_list.selection_set(0)
+        save_list.grid(row=0, column=0, sticky="nsew", padx=padding, pady=padding)
+
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=save_list.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns", pady=padding)
+        save_list.configure(yscrollcommand=scrollbar.set)
+    else:
+        ttk.Label(
+            body,
+            text="No saved runs yet — start a New Game.",
+            font=font,
+            anchor="center",
+        ).grid(row=0, column=0, sticky="nsew", padx=padding * 2, pady=padding * 2)
+
+    def load_selected():
+        if save_list is None:
+            return
+        selection = save_list.curselection()
+        if not selection:
+            return
+        commands["load_game"](slots[selection[0]])
+
+    if save_list is not None:
+        save_list.bind("<Double-Button-1>", lambda event: load_selected())
+
+    # Back sits bottom-right, same corner as the other screens.
+    footer = ttk.Frame(content)
+    footer.grid(row=2, column=0, sticky="ew", padx=padding, pady=(0, padding))
+    footer.columnconfigure(0, weight=1)
+
+    load_button = ttk.Button(footer, text="Load", command=load_selected, style=style)
+    if save_list is None:
+        load_button.state(["disabled"])
+    load_button.grid(row=0, column=1, sticky="e", padx=(0, padding))
+    ttk.Button(
+        footer, text="Back", command=lambda: show_screen(SCREEN_MENU), style=style
+    ).grid(row=0, column=2, sticky="e")
+
+    return content
 
 
 def _build_result_box(parent, state, font):
@@ -432,7 +577,9 @@ def _set_result_text(text_widget, message):
     text_widget.configure(state="disabled")
 
 
-def _build_bottom_section(parent, root, result_text, font, actions_height, menu_column_width):
+def _build_bottom_section(
+    parent, show_screen, result_text, font, actions_height, menu_column_width
+):
     outer = ttk.Frame(parent)
     outer.columnconfigure(0, weight=1)
     outer.columnconfigure(1, minsize=menu_column_width)
@@ -442,14 +589,16 @@ def _build_bottom_section(parent, root, result_text, font, actions_height, menu_
     _build_action_list(outer, result_text, font, actions_height).grid(
         row=0, column=0, sticky="nsew"
     )
-    _build_menu_button(outer, root, font).grid(row=0, column=1, sticky="se", padx=(6, 0))
+    _build_menu_button(outer, show_screen).grid(row=0, column=1, sticky="se", padx=(6, 0))
 
     return outer
 
 
-def _build_menu_button(parent, root, font):
+def _build_menu_button(parent, show_screen):
     frame = ttk.Frame(parent)
-    ttk.Button(frame, text="Main Menu", command=lambda: _open_main_menu(root, font)).pack()
+    ttk.Button(
+        frame, text="Main Menu", command=lambda: show_screen(SCREEN_MENU)
+    ).pack()
     return frame
 
 
