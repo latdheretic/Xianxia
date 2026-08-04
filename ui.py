@@ -66,7 +66,7 @@ BASE_MENU_COLUMN_WIDTH = 150
 BASE_PADDING = 6
 BASE_FONT_SIZE = 12
 BASE_HEADING_FONT_SIZE = 18
-BASE_SHEET_WRAP = 420
+MIN_VALUE_WRAP = 60  # never wrap a stat value narrower than this
 FONT_FAMILY = "TkDefaultFont"
 
 RESIZE_DEBOUNCE_MS = 120
@@ -149,11 +149,29 @@ def _build_screen(root, state, scale, screen, show_screen):
 
 
 def _measure_natural_size(root, state):
+    """Natural size = what the layout needs with every value on one line.
+
+    The probe is measured with wrapping switched off. Left live, the
+    dynamic wraplength binding would fire against the probe's pre-layout
+    width, wrap the values to that, and the measurement would then report
+    the narrow wrapped size — a base window too small to print its own
+    stats unwrapped.
+    """
     probe = _build_content(root, state, scale=1.0, show_screen=lambda name: None)
+    for widget in _walk(probe):
+        widget.unbind("<Configure>")
+        if isinstance(widget, ttk.Label):
+            widget.configure(wraplength=0)
     probe.update_idletasks()
     width, height = probe.winfo_reqwidth(), probe.winfo_reqheight()
     probe.destroy()
     return width, height
+
+
+def _walk(widget):
+    yield widget
+    for child in widget.winfo_children():
+        yield from _walk(child)
 
 
 def _compute_scale_and_width(window_w, window_h, base_width, base_height):
@@ -198,16 +216,13 @@ def _build_content(root, state, scale, show_screen):
     # actions rather than empty space above/below the layout.
     content.rowconfigure(2, weight=1)
 
-    # Values wrap rather than clip once a panel gets narrow at small scales.
-    wrap = max(80, side_panel_width - round(90 * scale))
-
-    _build_player_panel(content, state, font, wrap, show_screen).grid(
+    _build_player_panel(content, state, font, show_screen).grid(
         row=0, column=0, sticky="nsew", padx=padding, pady=padding
     )
     _build_scene_panel(content, state, image_size, font).grid(
         row=0, column=1, sticky="nsew", padx=padding, pady=padding
     )
-    _build_right_panel(content, state, font, wrap).grid(
+    _build_right_panel(content, state, font).grid(
         row=0, column=2, sticky="nsew", padx=padding, pady=padding
     )
 
@@ -221,7 +236,7 @@ def _build_content(root, state, scale, show_screen):
     return content
 
 
-def _build_player_panel(parent, state, font, wrap, show_screen):
+def _build_player_panel(parent, state, font, show_screen):
     frame = ttk.LabelFrame(parent, text="Player (click for details)")
 
     rows = [
@@ -231,20 +246,54 @@ def _build_player_panel(parent, state, font, wrap, show_screen):
         ("Qi", f"{state.qi} / {state.max_qi}"),
         ("Spirit Stones", str(state.currency)),
     ]
-    _fill_stat_rows(frame, rows, font, wrap)
+    _fill_stat_rows(frame, rows, font)
 
     _bind_click_recursive(frame, lambda event: show_screen(SCREEN_CHARACTER))
     return frame
 
 
-def _fill_stat_rows(frame, rows, font, wrap):
+def _fill_stat_rows(frame, rows, font, padx=4, pady=1):
+    """Lay out "label: value" rows whose values wrap only when they must.
+
+    wraplength has to track the value column's *rendered* width, not any
+    design-time constant — the panels are elastic, so a fixed wraplength
+    would keep breaking lines at the same word no matter how much room
+    the panel actually has. So the labels start unwrapped (letting them
+    report their true width to the geometry manager) and re-wrap from
+    the real width on every <Configure>.
+    """
+    # Value column takes any slack so values sit against the keys.
+    frame.columnconfigure(1, weight=1)
+
+    value_labels = []
     for i, (label, value) in enumerate(rows):
         ttk.Label(frame, text=f"{label}:", font=font).grid(
-            row=i, column=0, sticky="nw", padx=4, pady=1
+            row=i, column=0, sticky="nw", padx=padx, pady=pady
         )
-        ttk.Label(frame, text=value, font=font, wraplength=wrap, justify="left").grid(
-            row=i, column=1, sticky="w", padx=4, pady=1
-        )
+        value_label = ttk.Label(frame, text=value, font=font, justify="left")
+        value_label.grid(row=i, column=1, sticky="w", padx=padx, pady=pady)
+        value_labels.append(value_label)
+
+    applied = {"wrap": None}
+
+    def on_configure(event):
+        # Measure against the panel's real width. The value column's own
+        # allocated width can't be used: grid floors it at the unwrapped
+        # label's request, so it never reports shrinking. The key column
+        # is safe to read — key labels never wrap, so their width is
+        # stable. bbox x doubles as the frame's border inset.
+        key_cell = frame.grid_bbox(0, 0)
+        if not key_cell:
+            return
+        inset, key_width = key_cell[0], key_cell[2]
+        available = event.width - inset * 2 - key_width - padx * 2
+        if available < MIN_VALUE_WRAP or available == applied["wrap"]:
+            return
+        applied["wrap"] = available
+        for value_label in value_labels:
+            value_label.configure(wraplength=available)
+
+    frame.bind("<Configure>", on_configure)
 
 
 def _bind_click_recursive(widget, callback):
@@ -263,7 +312,6 @@ def _build_character_screen(root, state, scale, show_screen):
     font = (FONT_FAMILY, font_size)
     heading_font = (FONT_FAMILY, max(8, round(BASE_HEADING_FONT_SIZE * scale)), "bold")
     padding = max(2, round(BASE_PADDING * scale))
-    wrap = max(120, round(BASE_SHEET_WRAP * scale))
 
     content = ttk.Frame(root)
     content.columnconfigure(0, weight=1)
@@ -286,13 +334,7 @@ def _build_character_screen(root, state, scale, show_screen):
         ("Location", state.location),
         ("Date", state.date_str),
     ]
-    for i, (label, value) in enumerate(rows):
-        ttk.Label(sheet, text=f"{label}:", font=font).grid(
-            row=i, column=0, sticky="nw", padx=padding * 2, pady=padding // 2 + 1
-        )
-        ttk.Label(sheet, text=value, font=font, wraplength=wrap, justify="left").grid(
-            row=i, column=1, sticky="w", padx=padding * 2, pady=padding // 2 + 1
-        )
+    _fill_stat_rows(sheet, rows, font, padx=padding * 2, pady=padding // 2 + 1)
 
     # Back sits bottom-right, same corner the main screen puts Main Menu in.
     footer = ttk.Frame(content)
@@ -305,31 +347,31 @@ def _build_character_screen(root, state, scale, show_screen):
     return content
 
 
-def _build_right_panel(parent, state, font, wrap):
+def _build_right_panel(parent, state, font):
     if state.in_combat:
-        return _build_opponent_panel(parent, state, font, wrap)
-    return _build_world_panel(parent, state, font, wrap)
+        return _build_opponent_panel(parent, state, font)
+    return _build_world_panel(parent, state, font)
 
 
-def _build_world_panel(parent, state, font, wrap):
+def _build_world_panel(parent, state, font):
     frame = ttk.LabelFrame(parent, text="World")
 
     rows = [
         ("Date", state.date_str),
         ("Location", state.location),
     ]
-    _fill_stat_rows(frame, rows, font, wrap)
+    _fill_stat_rows(frame, rows, font)
     return frame
 
 
-def _build_opponent_panel(parent, state, font, wrap):
+def _build_opponent_panel(parent, state, font):
     frame = ttk.LabelFrame(parent, text="Opponent")
 
     rows = [
         ("Name", state.interacting_with or "Unknown"),
         ("Health", f"{state.opponent_health} / {state.opponent_max_health}"),
     ]
-    _fill_stat_rows(frame, rows, font, wrap)
+    _fill_stat_rows(frame, rows, font)
     return frame
 
 
