@@ -221,8 +221,13 @@ class GameState:
 
     @property
     def journey_str(self) -> str:
-        parts = [_plural(self.journey_days, "day")]
-        # Years drop out entirely in the first year rather than reading "0 years".
+        # Either half drops out at zero rather than reading "0 years" or
+        # "0 days and 2 years". The one exception is the first day of a
+        # run, where dropping both would leave the sentence with nothing
+        # to say.
+        parts = []
+        if self.journey_days or not self.journey_years:
+            parts.append(_plural(self.journey_days, "day"))
         if self.journey_years:
             parts.append(_plural(self.journey_years, "year"))
         return "You have been cultivating for " + " and ".join(parts) + "."

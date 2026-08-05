@@ -48,7 +48,9 @@ by player-chosen actions that consume in-game time (from instant to months).
 - The journey is tracked separately from the calendar, as elapsed days and
   completed years from the run's first day, so it survives those hour
   resets. It reads as a duration ("You have been cultivating for 1 day and
-  4 years"), with years omitted entirely before the first one is complete.
+  4 years"); either half drops out at zero, so the first year shows only
+  days and an exact anniversary shows only years. The sole exception is
+  day one, which would otherwise have nothing left to print.
 - The time panel shows two lines: the clock and date on one, the journey
   duration on the other. The era year lives on the character sheet, to
   keep the panel short.
