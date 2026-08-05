@@ -54,23 +54,23 @@ container in front of the image would paint over it. Scaling needs
 Pillow; without it the menu falls back to a flat colour and everything
 else is unaffected.
 
-Phase 1 (this file): static layout, dummy stats/state, inert action
-buttons that print to console and echo a canned line into the result
-box. Player stats panel is clickable and opens the character sheet.
 Main Menu is just another bottom-row control (not a top corner button)
 so it reads as one of the available choices, always anchored
 bottom-right for consistency as the action list grows/shrinks.
 
-Phase 2+: wire action buttons to actions.py, refresh stats panels and
-scene image after each action resolves via a single refresh_ui(state)
-entry point, and populate the action list from
-get_available_actions(state) instead of DUMMY_ACTIONS.
+Actions: the list comes from actions.get_available_actions(state), and a
+click is handed straight back out to the dispatcher main.py supplied —
+this module knows an action has a label and a time cost, and nothing
+about what any of them do. Afterwards refresh_ui() rebuilds the current
+screen, which is what makes the clock, stats and result line update
+together; there is no per-widget update path to keep in sync.
 """
 
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
+from actions import get_available_actions
 from state import GameState, has_save_file, list_saves
 
 try:
@@ -126,17 +126,14 @@ MENU_BUTTON_STYLE = "Menu.TButton"
 
 GAME_TITLE = "Xianxia Cultivation Simulator"  # working title
 
-DUMMY_ACTIONS = [
-    ("Travel to the village", "2 days"),
-    ("Rest", "8 hours"),
-    ("Meditate at the spring", "1 month"),
-    ("Harvest spirit herbs", "4 hours"),
-    ("Spar with a fellow disciple", "1 hour"),
-    ("Browse the market stalls", "instant"),
-]
+def build_ui(root, state, on_action=None):
+    """Build the window.
 
-
-def build_ui(root, state):
+    `on_action` is how a clicked action gets resolved: main.py passes the
+    dispatcher, which is where autosave will hook in (Phase 3). It takes
+    (state, action). Leaving it out makes actions inert, which is what the
+    natural-size probe wants.
+    """
     root.title(GAME_TITLE)
     root.configure(background=ttk.Style().lookup("TFrame", "background"))
 
@@ -183,6 +180,7 @@ def build_ui(root, state):
             commands,
             layout["run_active"],
             (content_width, content_height),
+            do_action,
         )
         content.place(
             relx=0.5, rely=0.5, anchor="center", width=content_width, height=content_height
@@ -191,7 +189,23 @@ def build_ui(root, state):
 
     def show_screen(name):
         layout["screen"] = name
+        refresh_ui()
+
+    def refresh_ui():
+        """Redraw the current screen from the current state.
+
+        The single entry point for "state changed, show it" — the layout
+        is rebuilt from scratch each time anyway, so there is no separate
+        set-this-label-to-that path to keep in sync.
+        """
         apply_layout(root.winfo_width(), root.winfo_height())
+
+    def do_action(action):
+        """Hand a clicked action to main.py, then show the result."""
+        if on_action is None:
+            return
+        on_action(layout["state"], action)
+        refresh_ui()
 
     def start_new_game():
         # Phase 3: create this run's save file here too, so autosave has a
@@ -238,7 +252,9 @@ def build_ui(root, state):
     apply_layout(base_width, base_height)
 
 
-def _build_screen(root, state, scale, screen, show_screen, commands, run_active, size):
+def _build_screen(
+    root, state, scale, screen, show_screen, commands, run_active, size, do_action
+):
     """Screens share the window and the same scale/dimension rules."""
     if screen == SCREEN_CHARACTER:
         return _build_character_screen(root, state, scale, show_screen)
@@ -246,7 +262,7 @@ def _build_screen(root, state, scale, screen, show_screen, commands, run_active,
         return _build_menu_screen(root, scale, show_screen, commands, run_active, size)
     if screen == SCREEN_LOAD:
         return _build_load_screen(root, scale, show_screen, commands)
-    return _build_content(root, state, scale, show_screen)
+    return _build_content(root, state, scale, show_screen, do_action)
 
 
 def _measure_natural_size(root, state):
@@ -262,7 +278,9 @@ def _measure_natural_size(root, state):
     not stat values, and measuring them on one line would size the window
     around a paragraph.
     """
-    probe = _build_content(root, state, scale=1.0, show_screen=lambda name: None)
+    probe = _build_content(
+        root, state, scale=1.0, show_screen=lambda name: None, do_action=lambda a: None
+    )
     for widget in _walk(probe):
         widget.unbind("<Configure>")
         if isinstance(widget, ttk.Label) and not getattr(
@@ -306,7 +324,7 @@ def _compute_scale_and_width(window_w, window_h, base_width, base_height):
     return scale, round(content_width)
 
 
-def _build_content(root, state, scale, show_screen):
+def _build_content(root, state, scale, show_screen, do_action):
     font_size = max(6, round(BASE_FONT_SIZE * scale))
     font = (FONT_FAMILY, font_size)
     image_size = round(BASE_IMAGE_SIZE * scale)
@@ -333,11 +351,12 @@ def _build_content(root, state, scale, show_screen):
         row=0, column=2, sticky="nsew", padx=padding, pady=padding
     )
 
-    result_text = _build_result_box(content, state, font)
-    result_text.grid(row=1, column=0, columnspan=3, sticky="ew", padx=padding, pady=(0, padding))
+    _build_result_box(content, state, font).grid(
+        row=1, column=0, columnspan=3, sticky="ew", padx=padding, pady=(0, padding)
+    )
 
     _build_bottom_section(
-        content, show_screen, result_text, font, actions_height, menu_column_width
+        content, show_screen, state, do_action, font, actions_height, menu_column_width
     ).grid(row=2, column=0, columnspan=3, sticky="nsew", padx=padding, pady=(0, padding))
 
     return content
@@ -829,7 +848,7 @@ def _set_result_text(text_widget, message):
 
 
 def _build_bottom_section(
-    parent, show_screen, result_text, font, actions_height, menu_column_width
+    parent, show_screen, state, do_action, font, actions_height, menu_column_width
 ):
     outer = ttk.Frame(parent)
     outer.columnconfigure(0, weight=1)
@@ -837,7 +856,7 @@ def _build_bottom_section(
     # minsize is the floor; weight lets the row take any surplus height.
     outer.rowconfigure(0, weight=1, minsize=actions_height)
 
-    _build_action_list(outer, result_text, font, actions_height).grid(
+    _build_action_list(outer, state, do_action, font, actions_height).grid(
         row=0, column=0, sticky="nsew"
     )
     _build_menu_button(outer, show_screen).grid(row=0, column=1, sticky="se", padx=(6, 0))
@@ -853,7 +872,7 @@ def _build_menu_button(parent, show_screen):
     return frame
 
 
-def _build_action_list(parent, result_text, font, actions_height):
+def _build_action_list(parent, state, do_action, font, actions_height):
     outer = ttk.LabelFrame(parent, text="Actions")
     outer.rowconfigure(0, weight=1)
     outer.columnconfigure(0, weight=1)
@@ -869,25 +888,16 @@ def _build_action_list(parent, result_text, font, actions_height):
     canvas.grid(row=0, column=0, sticky="nsew")
     scrollbar.grid(row=0, column=1, sticky="ns")
 
-    for label, time_cost in DUMMY_ACTIONS:
-        _add_action_button(inner, label, time_cost, result_text, font)
+    for action in get_available_actions(state):
+        _add_action_button(inner, action, do_action)
 
     return outer
 
 
-def _add_action_button(parent, label, time_cost, result_text, font):
+def _add_action_button(parent, action, do_action):
     button = ttk.Button(
         parent,
-        text=f"{label}  —  {time_cost}",
-        command=lambda: _on_action_clicked(label, time_cost, result_text),
+        text=f"{action.label}  —  {action.time_cost_label}",
+        command=lambda: do_action(action),
     )
     button.pack(fill="x", padx=4, pady=2)
-
-
-def _on_action_clicked(label, time_cost, result_text):
-    message = (
-        f"[dummy] You chose to {label.lower()} ({time_cost}). "
-        "Nothing happens yet — actions.py isn't wired up."
-    )
-    print(message)
-    _set_result_text(result_text, message)
