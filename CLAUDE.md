@@ -118,8 +118,13 @@ Three kinds, each mattering at a different point in a run:
 Balances live in a `wallet` dict keyed like `CURRENCIES`, so a fourth kind
 needs no new field on GameState. Sect affiliation is optional, and both
 sect-dependent rows disappear together when there is none: no Sect row and
-no Contribution Points row, rather than empty or zeroed ones. The balance
-is still *stored* — see save_data/schema_notes.md — only hidden.
+no Contribution Points row, rather than empty or zeroed ones.
+
+Contribution points are standing inside one *particular* sect, so changing
+affiliation wipes them — leaving loses the favour, and joining somewhere
+new starts over as a stranger. Change sect through `GameState.set_sect()`
+(or `leave_sect()`) rather than assigning to `.sect`, which would carry
+one sect's favour into another's ledger.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.

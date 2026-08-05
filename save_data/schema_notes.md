@@ -37,10 +37,11 @@ all are derived, and storing them would let a save contradict the data
 file after it is tuned. Current health *is* saved: a wounded cultivator
 should still be wounded when the run is loaded.
 
-`wallet` is keyed like `CURRENCIES`. Save every balance, including
-contribution points for a cultivator with no sect — leaving a sect should
-not silently burn what was banked before, and whether the row is *shown*
-is a UI question, not a storage one.
+`wallet` is keyed like `CURRENCIES`. Save every balance. Contribution
+points are standing inside one particular sect, so leaving or switching
+zeroes them at the moment of the change (`GameState.set_sect`) — a save
+of an unaffiliated cultivator should therefore carry 0, not a balance
+waiting to be restored.
 Pools are saved because they are spent and recovered independently of
 progress. A save holding a track the data file no longer defines should be
 ignored rather than fought over.

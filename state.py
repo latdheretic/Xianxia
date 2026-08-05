@@ -413,6 +413,25 @@ class GameState:
         """Whether this currency applies at all — sect money needs a sect."""
         return bool(self.sect) or not currency.requires_sect
 
+    def set_sect(self, sect: Optional[str]) -> None:
+        """Join, leave or switch sects.
+
+        Contribution points measure standing inside one particular sect,
+        so any change wipes them: walk away and the favour is gone, join
+        somewhere new and you start over as a stranger. Change affiliation
+        through here rather than assigning to .sect, which would leave the
+        old sect's favour spendable at the new one.
+        """
+        if sect == self.sect:
+            return
+        self.sect = sect
+        for currency in CURRENCIES:
+            if currency.requires_sect:
+                self.wallet[currency.key] = 0
+
+    def leave_sect(self) -> None:
+        self.set_sect(None)
+
     def earn(self, currency: Currency, amount: int) -> None:
         self.wallet[currency.key] = self.balance(currency) + int(amount)
 
