@@ -89,6 +89,13 @@ Four tracks advance in parallel, each with its own resource:
   last on purpose: an action that deepens a track raises that resource's
   ceiling, and the time it took should fill the new pool, not the old one.
 
+**Health** is derived too: `base_health` (in the data file, 100) plus power
+level, so cultivating makes a character tougher without anything storing a
+maximum. Perks and gear will modify the same value once generation exists —
+they belong in that calculation, not in a saved number. Only *current*
+health is state; a new character starts whole, and raising the ceiling
+mid-run does not heal anyone.
+
 **Power level** is derived, not stored: the highest of the four progress
 values plus the average of the other three, rounded to the nearest whole
 number. Depth counts for more than breadth, and a single track carries a

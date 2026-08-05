@@ -171,6 +171,15 @@ class CultivationTrack:
         return self.realms[index] if index < len(self.realms) else None
 
 
+@dataclass(frozen=True)
+class CultivationData:
+    """Everything data/cultivation.json supplies, in one piece."""
+
+    tracks: tuple
+    qi_cycling_multiplier: float
+    base_health: float
+
+
 def _load_cultivation(path=CULTIVATION_DATA_PATH):
     """Read data/cultivation.json into tracks, validating as we go.
 
@@ -233,10 +242,23 @@ def _load_cultivation(path=CULTIVATION_DATA_PATH):
             )
         )
 
-    return tuple(tracks), float(data.get("qi_cycling_multiplier", 1))
+    base_health = float(data.get("base_health", 100))
+    if base_health < 0:
+        raise ValueError(f"{path}: base_health cannot be negative")
+
+    return CultivationData(
+        tracks=tuple(tracks),
+        qi_cycling_multiplier=float(data.get("qi_cycling_multiplier", 1)),
+        base_health=base_health,
+    )
 
 
-TRACKS, QI_CYCLING_MULTIPLIER = _load_cultivation()
+_DATA = _load_cultivation()
+TRACKS = _DATA.tracks
+QI_CYCLING_MULTIPLIER = _DATA.qi_cycling_multiplier
+# What a cultivator would have with no cultivation at all; power level is
+# added on top. Perks and gear will modify it once they exist.
+BASE_HEALTH = _DATA.base_health
 TRACKS_BY_KEY = {track.key: track for track in TRACKS}
 
 
@@ -253,8 +275,10 @@ def format_percent(fraction: float) -> str:
 class GameState:
     name: str = "Wanderer"
     age: int = 16
-    health: int = 100
-    max_health: int = 100
+    # Current health only. The ceiling is derived — see max_health — so a
+    # cultivator who deepens a track gets tougher without anything here
+    # having to be updated. None means "start whole".
+    health: Optional[int] = None
     currency: int = 0
 
     # --- cultivation ---
@@ -305,6 +329,9 @@ class GameState:
             self.cultivation.setdefault(track.key, 0)
         for track in TRACKS:
             self.pools.setdefault(track.key, self.max_resource(track))
+        # Health last: its ceiling depends on the cultivation above.
+        if self.health is None:
+            self.health = self.max_health
 
     @classmethod
     def new_game(cls) -> "GameState":
@@ -338,6 +365,16 @@ class GameState:
 
     def resource(self, track: CultivationTrack) -> float:
         return self.pools[track.key]
+
+    @property
+    def max_health(self) -> int:
+        """Baseline plus power level.
+
+        Derived rather than stored, so cultivating makes a character
+        tougher on its own. Perks and gear will modify this too once
+        generation exists; they belong here, not in a saved number.
+        """
+        return int(BASE_HEALTH) + self.power_level
 
     @property
     def power_level(self) -> int:

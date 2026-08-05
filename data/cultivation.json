@@ -1,4 +1,5 @@
 {
+  "base_health": 100,
   "qi_cycling_multiplier": 20,
   "tracks": {
     "body": {

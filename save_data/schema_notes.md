@@ -9,7 +9,7 @@ start, e.g.:
 ```json
 {
   "schema_version": 1,
-  "player": { "name": "...", "age": 16, "health": 100, "currency": 0,
+  "player": { "name": "...", "age": 16, "health": 162, "currency": 0,
               "cultivation": { "body": 0.25, "qi": 0.4,
                                "spirit": 6.0, "soul": 0.0 },
               "pools": { "stamina": 100, "qi": 4, "shen": 30, "karma": 0 } },
@@ -30,8 +30,10 @@ with month 1-12 and day 1-30.
 
 `cultivation` and `pools` are keyed by track, matching
 `data/cultivation.json`. Save the progress integers and the current pools,
-but never the realm names or the pool ceilings — both are derived, and
-storing them would let a save contradict the data file after it is tuned.
+but never the realm names, the pool ceilings, max health or power level —
+all are derived, and storing them would let a save contradict the data
+file after it is tuned. Current health *is* saved: a wounded cultivator
+should still be wounded when the run is loaded.
 Pools are saved because they are spent and recovered independently of
 progress. A save holding a track the data file no longer defines should be
 ignored rather than fought over.
