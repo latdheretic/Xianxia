@@ -339,6 +339,25 @@ class GameState:
     def resource(self, track: CultivationTrack) -> float:
         return self.pools[track.key]
 
+    @property
+    def power_level(self) -> int:
+        """One number for what a cultivator can handle.
+
+        The strongest track carries it, plus the average of the others —
+        so a lopsided cultivator still counts for something, but breadth
+        is worth less than depth. Later this drives technique strength,
+        and hostile locations advertise their own so the player can judge
+        whether they are out of their depth.
+        """
+        values = sorted((self.progress(track) for track in TRACKS), reverse=True)
+        if not values:
+            return 0
+        highest, rest = values[0], values[1:]
+        average = sum(rest) / len(rest) if rest else 0
+        # Half-up: Python's round() would send 2.5 to 2, which reads as a
+        # bug in a stat the player is comparing against a threat's number.
+        return int(highest + average + 0.5)
+
     def bottleneck(self, track: CultivationTrack) -> int:
         """The most progress this track can reach without a breakthrough."""
         return self.realm(track).end

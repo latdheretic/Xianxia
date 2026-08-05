@@ -89,6 +89,14 @@ Four tracks advance in parallel, each with its own resource:
   last on purpose: an action that deepens a track raises that resource's
   ceiling, and the time it took should fill the new pool, not the old one.
 
+**Power level** is derived, not stored: the highest of the four progress
+values plus the average of the other three, rounded to the nearest whole
+number. Depth counts for more than breadth, and a single track carries a
+cultivator on its own. It heads the cultivation block on both the side
+panel and the character sheet, since it summarises the tracks under it.
+Later it drives technique strength, and hostile locations will advertise
+their own so the player can judge a fight before taking it.
+
 ## Core loop
 1. Game state loaded (or new game created) on launch.
 2. Available actions are generated based on current location/state.

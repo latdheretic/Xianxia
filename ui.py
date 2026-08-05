@@ -375,14 +375,16 @@ def _format_pool(state, track):
 
 
 def _cultivation_rows(state, with_progress):
-    """One row per track, plus its resource.
+    """Power level, then one row per track plus its resource.
 
     The main screen names the realm and nothing else; the character sheet
     is where the number behind it belongs — where in the realm's range the
     cultivator stands, and how far through it that is. 100.0% means the
     ceiling, and a breakthrough is the only way on.
     """
-    rows = []
+    # Power level leads the block on both screens: it is derived from the
+    # four tracks below it, so it reads as their summary.
+    rows = [("Power Level", str(state.power_level))]
     for track in TRACKS:
         stage = state.stage(track)
         if with_progress:
