@@ -116,10 +116,10 @@ Three kinds, each mattering at a different point in a run:
 | Contribution Points | Awarded for sect missions, spent on training and resources |
 
 Balances live in a `wallet` dict keyed like `CURRENCIES`, so a fourth kind
-needs no new field on GameState. Contribution points require a sect: with
-no sect set, the row is shown **blank** rather than as a zero the player
-could never spend. Sect affiliation itself is optional — no sect means no
-Sect row at all.
+needs no new field on GameState. Sect affiliation is optional, and both
+sect-dependent rows disappear together when there is none: no Sect row and
+no Contribution Points row, rather than empty or zeroed ones. The balance
+is still *stored* — see save_data/schema_notes.md — only hidden.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.

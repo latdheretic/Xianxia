@@ -403,14 +403,16 @@ def _cultivation_rows(state, with_progress):
 
 
 def _currency_rows(state):
-    """One row per currency, in the order they matter over a run."""
-    rows = []
-    for currency in CURRENCIES:
-        # Sect money with no sect: the row stays, blank, rather than
-        # showing a zero the player could never spend.
-        value = str(state.balance(currency)) if state.has_currency(currency) else ""
-        rows.append((currency.name, value))
-    return rows
+    """One row per currency that applies, in the order they matter.
+
+    Sect money drops out entirely for an unaffiliated cultivator, the same
+    way the Sect row does — nothing to show rather than an empty value.
+    """
+    return [
+        (currency.name, str(state.balance(currency)))
+        for currency in CURRENCIES
+        if state.has_currency(currency)
+    ]
 
 
 def _build_player_panel(parent, state, font, padding, show_screen):
