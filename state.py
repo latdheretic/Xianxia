@@ -262,6 +262,37 @@ BASE_HEALTH = _DATA.base_health
 TRACKS_BY_KEY = {track.key: track for track in TRACKS}
 
 
+# --- currencies -------------------------------------------------------------
+#
+# Three of them, each meaningful at a different point in a run. Amounts live
+# in a wallet keyed the same way, so adding a fourth needs no new field on
+# GameState.
+
+
+@dataclass(frozen=True)
+class Currency:
+    """One kind of money, and when it is worth showing."""
+
+    key: str
+    name: str
+    # Contribution points are awarded by a sect; a cultivator without one
+    # has no such account, so the row is left blank rather than zeroed.
+    requires_sect: bool = False
+
+
+CURRENCIES = (
+    # Mortal money — what the early game actually runs on.
+    Currency("silver", "Silver Taels"),
+    # Only good for barter between cultivators, and worth more the higher
+    # a cultivator climbs.
+    Currency("spirit_stones", "Spirit Stones"),
+    # Earned on sect missions, spent on training and its resources.
+    Currency("contribution", "Contribution Points", requires_sect=True),
+)
+
+CURRENCIES_BY_KEY = {currency.key: currency for currency in CURRENCIES}
+
+
 def format_progress(progress: int) -> str:
     return str(int(progress))
 
@@ -275,11 +306,16 @@ def format_percent(fraction: float) -> str:
 class GameState:
     name: str = "Wanderer"
     age: int = 16
+    # None means unaffiliated — no sect name to show, and no contribution
+    # point account to spend from.
+    sect: Optional[str] = None
     # Current health only. The ceiling is derived — see max_health — so a
     # cultivator who deepens a track gets tougher without anything here
     # having to be updated. None means "start whole".
     health: Optional[int] = None
-    currency: int = 0
+
+    # Balances keyed by currency, matching CURRENCIES.
+    wallet: Dict[str, int] = field(default_factory=dict)
 
     # --- cultivation ---
     # Keyed by track, matching data/cultivation.json. Only these two move:
@@ -329,6 +365,8 @@ class GameState:
             self.cultivation.setdefault(track.key, 0)
         for track in TRACKS:
             self.pools.setdefault(track.key, self.max_resource(track))
+        for currency in CURRENCIES:
+            self.wallet.setdefault(currency.key, 0)
         # Health last: its ceiling depends on the cultivation above.
         if self.health is None:
             self.health = self.max_health
@@ -365,6 +403,25 @@ class GameState:
 
     def resource(self, track: CultivationTrack) -> float:
         return self.pools[track.key]
+
+    # --- money --------------------------------------------------------------
+
+    def balance(self, currency: Currency) -> int:
+        return self.wallet[currency.key]
+
+    def has_currency(self, currency: Currency) -> bool:
+        """Whether this currency applies at all — sect money needs a sect."""
+        return bool(self.sect) or not currency.requires_sect
+
+    def earn(self, currency: Currency, amount: int) -> None:
+        self.wallet[currency.key] = self.balance(currency) + int(amount)
+
+    def spend(self, currency: Currency, amount: int) -> bool:
+        """Pay if the purse covers it; otherwise change nothing and say so."""
+        if amount > self.balance(currency):
+            return False
+        self.wallet[currency.key] = self.balance(currency) - int(amount)
+        return True
 
     @property
     def max_health(self) -> int:

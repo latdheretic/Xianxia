@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from state import (
+    CURRENCIES_BY_KEY,
     DAYS_PER_MONTH,
     HOURS_PER_DAY,
     QI_CYCLING_MULTIPLIER,
@@ -197,8 +198,10 @@ def _meditate(state):
 
 
 def _harvest(state):
-    state.currency += 2
-    return "You cut what the ridge will spare. The herbs fetch 2 spirit stones."
+    # Silver, not spirit stones: mortal buyers are what an early cultivator
+    # has access to, and silver is what the early game runs on.
+    state.earn(CURRENCIES_BY_KEY["silver"], 12)
+    return "You cut what the ridge will spare. The herbs fetch 12 silver taels."
 
 
 def _spar(state):

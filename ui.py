@@ -72,6 +72,7 @@ from tkinter import ttk
 
 from actions import get_available_actions
 from state import (
+    CURRENCIES,
     TRACKS,
     GameState,
     format_percent,
@@ -348,7 +349,7 @@ def _build_content(root, state, scale, show_screen, do_action):
     # actions rather than empty space above/below the layout.
     content.rowconfigure(2, weight=1)
 
-    _build_player_panel(content, state, font, show_screen).grid(
+    _build_player_panel(content, state, font, padding, show_screen).grid(
         row=0, column=0, sticky="nsew", padx=padding, pady=padding
     )
     _build_scene_panel(content, state, image_size, font).grid(
@@ -382,9 +383,12 @@ def _cultivation_rows(state, with_progress):
     cultivator stands, and how far through it that is. 100.0% means the
     ceiling, and a breakthrough is the only way on.
     """
-    # Power level leads the block on both screens: it is derived from the
-    # four tracks below it, so it reads as their summary.
-    rows = [("Power Level", str(state.power_level))]
+    # Health sits above power level because it follows from it, and power
+    # level leads the tracks because it is their summary.
+    rows = [
+        ("Health", f"{state.health} / {state.max_health}"),
+        ("Power Level", str(state.power_level)),
+    ]
     for track in TRACKS:
         stage = state.stage(track)
         if with_progress:
@@ -398,19 +402,46 @@ def _cultivation_rows(state, with_progress):
     return rows
 
 
-def _build_player_panel(parent, state, font, show_screen):
-    frame = ttk.LabelFrame(parent, text="Player (click for details)")
+def _currency_rows(state):
+    """One row per currency, in the order they matter over a run."""
+    rows = []
+    for currency in CURRENCIES:
+        # Sect money with no sect: the row stays, blank, rather than
+        # showing a zero the player could never spend.
+        value = str(state.balance(currency)) if state.has_currency(currency) else ""
+        rows.append((currency.name, value))
+    return rows
 
-    rows = [
-        ("Name", state.name),
-        ("Health", f"{state.health} / {state.max_health}"),
-        ("Spirit Stones", str(state.currency)),
-    ]
-    rows += _cultivation_rows(state, with_progress=False)
-    _fill_stat_rows(frame, rows, font)
 
-    _bind_click_recursive(frame, lambda event: show_screen(SCREEN_CHARACTER))
-    return frame
+def _build_player_panel(parent, state, font, padding, show_screen):
+    """The left column, in three blocks mirroring the right one.
+
+    Who you are, what you have cultivated, what you can spend. Clicking
+    anywhere in the column opens the full character sheet.
+    """
+    container = ttk.Frame(parent)
+    container.columnconfigure(0, weight=1)
+    # The cultivation block takes the slack, which leaves the purse sitting
+    # at the bottom of the column where it belongs.
+    container.rowconfigure(1, weight=1)
+
+    identity = ttk.LabelFrame(container, text="Player (click for details)")
+    rows = [("Name", state.name)]
+    if state.sect:
+        rows.append(("Sect", state.sect))
+    _fill_stat_rows(identity, rows, font)
+    identity.grid(row=0, column=0, sticky="new", pady=(0, padding))
+
+    cultivation = ttk.LabelFrame(container, text="Cultivation")
+    _fill_stat_rows(cultivation, _cultivation_rows(state, with_progress=False), font)
+    cultivation.grid(row=1, column=0, sticky="nsew", pady=(0, padding))
+
+    purse = ttk.LabelFrame(container, text="Currency")
+    _fill_stat_rows(purse, _currency_rows(state), font)
+    purse.grid(row=2, column=0, sticky="sew")
+
+    _bind_click_recursive(container, lambda event: show_screen(SCREEN_CHARACTER))
+    return container
 
 
 def _fill_stat_rows(frame, rows, font, padx=4, pady=1):
@@ -521,15 +552,14 @@ def _build_character_screen(root, state, scale, show_screen):
     sheet = ttk.LabelFrame(content, text=state.name)
     sheet.grid(row=1, column=0, sticky="nsew", padx=padding, pady=(0, padding))
 
-    rows = [
-        ("Name", state.name),
-        ("Age", str(state.age)),
-        ("Health", f"{state.health} / {state.max_health}"),
-        ("Spirit Stones", str(state.currency)),
-    ]
+    rows = [("Name", state.name)]
+    if state.sect:
+        rows.append(("Sect", state.sect))
+    rows.append(("Age", str(state.age)))
     # Here the realms come with the raw progress behind them, which is the
     # difference between this screen and the panel it opens from.
     rows += _cultivation_rows(state, with_progress=True)
+    rows += _currency_rows(state)
     rows += [
         ("Location", state.location),
         ("Date", state.date_str),

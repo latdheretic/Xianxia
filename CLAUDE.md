@@ -25,8 +25,10 @@ by player-chosen actions that consume in-game time (from instant to months).
   knows how to read and validate the file.
 
 ## Layout (Tkinter grid, single window)
-- Top-left: player stats panel (name, stage, health, qi, spirit stones);
-  click it for the full character sheet screen
+- Top-left: three stacked blocks, mirroring the right column — who you
+  are (name, sect if any), what you have cultivated (health, power level,
+  the four tracks and their pools), and what you can spend (the three
+  currencies). Clicking anywhere in the column opens the character sheet
 - Top-middle: single static image for current scene/location
 - Top-right: time block (always visible) above a context block, which
   shows either the location or the character being interacted with
@@ -103,6 +105,21 @@ cultivator on its own. It heads the cultivation block on both the side
 panel and the character sheet, since it summarises the tracks under it.
 Later it drives technique strength, and hostile locations will advertise
 their own so the player can judge a fight before taking it.
+
+## Currency (decided)
+Three kinds, each mattering at a different point in a run:
+
+| Currency | What it is |
+|---|---|
+| Silver Taels | Mortal money; what the early game runs on |
+| Spirit Stones | Barter between cultivators; matters more the higher you climb |
+| Contribution Points | Awarded for sect missions, spent on training and resources |
+
+Balances live in a `wallet` dict keyed like `CURRENCIES`, so a fourth kind
+needs no new field on GameState. Contribution points require a sect: with
+no sect set, the row is shown **blank** rather than as a zero the player
+could never spend. Sect affiliation itself is optional — no sect means no
+Sect row at all.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.

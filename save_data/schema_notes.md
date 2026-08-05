@@ -9,7 +9,9 @@ start, e.g.:
 ```json
 {
   "schema_version": 1,
-  "player": { "name": "...", "age": 16, "health": 162, "currency": 0,
+  "player": { "name": "...", "age": 16, "sect": null, "health": 162,
+              "wallet": { "silver": 128, "spirit_stones": 3,
+                          "contribution": 0 },
               "cultivation": { "body": 0.25, "qi": 0.4,
                                "spirit": 6.0, "soul": 0.0 },
               "pools": { "stamina": 100, "qi": 4, "shen": 30, "karma": 0 } },
@@ -34,6 +36,11 @@ but never the realm names, the pool ceilings, max health or power level —
 all are derived, and storing them would let a save contradict the data
 file after it is tuned. Current health *is* saved: a wounded cultivator
 should still be wounded when the run is loaded.
+
+`wallet` is keyed like `CURRENCIES`. Save every balance, including
+contribution points for a cultivator with no sect — leaving a sect should
+not silently burn what was banked before, and whether the row is *shown*
+is a UI question, not a storage one.
 Pools are saved because they are spent and recovered independently of
 progress. A save holding a track the data file no longer defines should be
 ignored rather than fought over.
