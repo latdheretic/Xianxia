@@ -36,16 +36,22 @@ by player-chosen actions that consume in-game time (from instant to months).
 - 12 months of 30 days = 360-day years. Months are named for the zodiac
   starting at the Tiger, so the year turns over on the first month of
   spring (Tiger 1).
-- Years carry both a zodiac animal and an Imperial Era number. Era year 1
-  was a year of the Dragon, which anchors the cycle. A run's starting year
-  is rolled between 500 and 1500.
-- 24-hour days, whole hours only — no minutes or seconds. Anything under
-  an hour is instant as far as the clock is concerned.
+- Only months carry a zodiac animal. Years are numbered by the Imperial
+  Era alone — naming the year as well read as clutter in the time panel.
+  A run's starting year is rolled between 500 and 1500.
+- Days run on whole hours, no minutes or seconds; anything under an hour
+  is instant as far as the clock is concerned. Displayed on a 12-hour
+  clock ("6:00 AM"), stored as 0-23.
 - Actions cost either hours (up to 48) or whole days (3+). A day-costed
   action leaves the character starting again at the day start hour (6:00),
   which is also where a new run begins.
-- The journey is tracked separately from the calendar: day-within-year and
-  year counted from the run's first day, so it survives those hour resets.
+- The journey is tracked separately from the calendar, as elapsed days and
+  completed years from the run's first day, so it survives those hour
+  resets. It reads as a duration ("You have been cultivating for 1 day and
+  4 years"), with years omitted entirely before the first one is complete.
+- The time panel shows two lines: the clock and date on one, the journey
+  duration on the other. The era year lives on the character sheet, to
+  keep the panel short.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.

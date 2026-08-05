@@ -517,12 +517,7 @@ def _build_right_panel(parent, state, font, panel_width, padding):
 def _build_time_panel(parent, state, font, wrap):
     frame = ttk.LabelFrame(parent, text="Time")
 
-    _fill_text_lines(
-        frame,
-        [state.clock_str, state.date_str, state.era_str, state.journey_str],
-        font,
-        wrap,
-    )
+    _fill_text_lines(frame, [state.time_str, state.journey_str], font, wrap)
     return frame
 
 

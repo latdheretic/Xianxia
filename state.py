@@ -55,25 +55,8 @@ MONTHS = (
     "Rat",
     "Ox",
 )
-# Years cycle through the same twelve animals in their canonical order.
-ZODIAC_CYCLE = (
-    "Rat",
-    "Ox",
-    "Tiger",
-    "Rabbit",
-    "Dragon",
-    "Snake",
-    "Horse",
-    "Sheep",
-    "Monkey",
-    "Rooster",
-    "Dog",
-    "Pig",
-)
-# Year 1 of the Imperial Era was a year of the Dragon, which anchors the
-# whole cycle: every era year's animal follows from this offset.
-ERA_YEAR_ONE_ANIMAL = "Dragon"
-
+# Years are numbered by the Imperial Era only — no zodiac animal. Naming
+# both the month and the year made the time panel read as clutter.
 DAYS_PER_MONTH = 30
 MONTHS_PER_YEAR = 12
 DAYS_PER_YEAR = DAYS_PER_MONTH * MONTHS_PER_YEAR
@@ -105,12 +88,6 @@ def from_absolute_day(absolute: int):
     return year + 1, month + 1, day + 1
 
 
-def year_animal(year: int) -> str:
-    """The zodiac animal naming a given Imperial Era year."""
-    offset = ZODIAC_CYCLE.index(ERA_YEAR_ONE_ANIMAL)
-    return ZODIAC_CYCLE[(offset + year - 1) % len(ZODIAC_CYCLE)]
-
-
 def month_animal(month: int) -> str:
     """The zodiac animal naming a given month."""
     return MONTHS[(month - 1) % MONTHS_PER_YEAR]
@@ -118,6 +95,10 @@ def month_animal(month: int) -> str:
 
 def random_start_year() -> int:
     return random.randint(MIN_START_YEAR, MAX_START_YEAR)
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 @dataclass
@@ -209,35 +190,42 @@ class GameState:
         )
 
     @property
-    def journey_year(self) -> int:
-        return self.elapsed_days // DAYS_PER_YEAR + 1
+    def journey_years(self) -> int:
+        """Whole years of cultivation completed."""
+        return self.elapsed_days // DAYS_PER_YEAR
 
     @property
-    def journey_day(self) -> int:
-        """Day within the current year of the journey, counting from 1."""
-        return self.elapsed_days % DAYS_PER_YEAR + 1
+    def journey_days(self) -> int:
+        """Days of cultivation on top of those whole years."""
+        return self.elapsed_days % DAYS_PER_YEAR
 
     @property
     def clock_str(self) -> str:
-        return f"{self.hour}:00"
+        """Whole hours on a 12-hour clock: midnight is 12:00 AM, noon 12:00 PM."""
+        suffix = "AM" if self.hour < 12 else "PM"
+        hour = self.hour % 12 or 12
+        return f"{hour}:00 {suffix}"
+
+    @property
+    def time_str(self) -> str:
+        """The one line the time panel leads with."""
+        return f"{self.clock_str} Day {self.day} in the month of the {month_animal(self.month)}"
 
     @property
     def date_str(self) -> str:
+        """Longer form, for the character sheet — this one carries the year."""
         return (
             f"Day {self.day} in the month of the {month_animal(self.month)}, "
-            f"in the year of the {year_animal(self.year)}"
+            f"Imperial Era {self.year}"
         )
-
-    @property
-    def era_str(self) -> str:
-        return f"Year {self.year} of the Imperial Era"
 
     @property
     def journey_str(self) -> str:
-        return (
-            f"It is day {self.journey_day}, year {self.journey_year} "
-            "of your cultivation journey."
-        )
+        parts = [_plural(self.journey_days, "day")]
+        # Years drop out entirely in the first year rather than reading "0 years".
+        if self.journey_years:
+            parts.append(_plural(self.journey_years, "year"))
+        return "You have been cultivating for " + " and ".join(parts) + "."
 
 
 @dataclass
