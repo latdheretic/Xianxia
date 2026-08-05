@@ -77,10 +77,11 @@ class Action:
     days: int = 0
     effect: Optional[Callable] = field(default=None, repr=False)
     # Recovery modifiers for the time this action spends. Qi cycling drives
-    # qi back far faster than idle time; sleeping restores Shen outright,
-    # which time alone only does across a full day.
+    # qi back far faster than idle time; an action counted as proper rest
+    # refills the full-recovery tracks outright, which time alone only does
+    # across a whole day.
     qi_multiplier: float = 1
-    restores_shen: bool = False
+    sleeps: bool = False
 
     def __post_init__(self):
         if self.hours and self.days:
@@ -135,7 +136,7 @@ class Action:
         state.recover_over(
             self.elapsed_hours,
             qi_multiplier=self.qi_multiplier,
-            full_shen=self.restores_shen,
+            slept=self.sleeps,
         )
         state.last_action_result = message
         return message
@@ -159,7 +160,7 @@ def _travel_to(destination):
 def _rest(state):
     healed = min(15, state.max_health - state.health)
     state.health += healed
-    # Shen came back with the sleep itself, via the action's restores_shen.
+    # Shen came back with the sleep itself, via the action's sleeps flag.
     if healed:
         return f"You sleep the night through and recover {healed} health."
     return "You sleep the night through. There was nothing left to mend."
@@ -168,7 +169,7 @@ def _rest(state):
 def _cycle_qi(state):
     """The one action that both refills qi and deepens the qi track."""
     track = TRACKS_BY_KEY["qi"]
-    gained = state.add_progress(track, 0.4)
+    gained = state.add_progress(track, 4)
     if not gained:
         return (
             "You cycle the breath until the meridians ring, but the realm "
@@ -182,7 +183,7 @@ def _cycle_qi(state):
 
 def _meditate(state):
     track = TRACKS_BY_KEY["spirit"]
-    gained = state.add_progress(track, 6.0)
+    gained = state.add_progress(track, 60)
     if not gained:
         return (
             "You sit with the spring until the month turns. Your spirit "
@@ -209,7 +210,7 @@ def _spar(state):
     body = TRACKS_BY_KEY["body"]
     lost = min(5, state.health)
     state.health -= lost
-    gained = state.add_progress(body, 0.25)
+    gained = state.add_progress(body, 3)
     if not gained:
         return (
             f"You trade blows until your guard fails — {lost} health for "
@@ -236,7 +237,7 @@ def get_available_actions(state):
 
     return [
         Action(f"Travel to {destination}", hours=48, effect=_travel_to(destination)),
-        Action("Rest", hours=8, effect=_rest, restores_shen=True),
+        Action("Rest", hours=8, effect=_rest, sleeps=True),
         Action(
             "Cycle qi",
             hours=4,

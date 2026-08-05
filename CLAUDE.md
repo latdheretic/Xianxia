@@ -16,10 +16,13 @@ by player-chosen actions that consume in-game time (from instant to months).
 - JSON for save files (human-readable, easy to debug/patch by hand)
 - No external game engine, no network, no database
 
-## Assets
+## Assets & data
 - `images/system/` — chrome that belongs to the game itself (menu
   backgrounds etc.); see the README there for ratio/cropping rules.
 - Scene/location art gets its own home under `images/` in Phase 4.
+- `data/cultivation.json` — realm ladders, resource ceilings and recovery
+  rules. Tunable values belong here rather than in code; state.py only
+  knows how to read and validate the file.
 
 ## Layout (Tkinter grid, single window)
 - Top-left: player stats panel (name, stage, health, qi, spirit stones);
@@ -65,13 +68,20 @@ Four tracks advance in parallel, each with its own resource:
 | Spirit Cultivation | Shen | 5 x progress | a night's sleep, or any action of 24h+ |
 | Soul Cultivation | Karma | 100 x progress | never with time — events only |
 
-- Progress is a number starting at 0. Every whole 100 of it is one
-  cultivation realm, and each track has its own ladder of realm names.
-- The realm name is all the main screen shows. The raw number (two
-  decimals) belongs on the character sheet.
-- Progress cannot cross a hundred by itself: it stops at 99.99, 199.99 and
-  so on, and only a breakthrough carries a cultivator over. That is why
-  "ready to break through" is legible as 99.99.
+- **The realm ladders live in `data/cultivation.json`, not in code.** Realm
+  names and their progress ranges, the resource ceilings and the recovery
+  rules all come from that file, so tuning the numbers never means editing
+  state.py. The file is required — a missing or malformed one raises with
+  a specific complaint rather than falling back to buried defaults, since
+  silent defaults would hide a typo in the data.
+- Progress is an integer starting at 0. Realms are contiguous ranges,
+  1000 wide by default: 0-999, 1000-1999, and so on.
+- The realm name is all the main screen shows. The character sheet adds
+  the raw value, the range it sits in, and how far through it that is.
+- Progress cannot leave its realm by itself: it stops at the top of the
+  range, and only a breakthrough carries a cultivator over. The character
+  sheet shows that state as exactly 100.0%. At the top of a ladder a
+  breakthrough fails — define another realm in the data file to go on.
 - Resource ceilings follow from progress, so cultivating widens the pool.
   Only body tempering starts anyone with a usable pool; the other three
   read 0 / 0 until that track is cultivated at all.

@@ -1,0 +1,252 @@
+{
+  "qi_cycling_multiplier": 20,
+  "tracks": {
+    "body": {
+      "name": "Body Tempering",
+      "resource": "Stamina",
+      "resource_base": 100,
+      "resource_per_progress": 1,
+      "recovery": {
+        "mode": "rate",
+        "hours": 2
+      },
+      "realms": [
+        {
+          "name": "Mortal Frame",
+          "start": 0,
+          "end": 999
+        },
+        {
+          "name": "Iron Skin",
+          "start": 1000,
+          "end": 1999
+        },
+        {
+          "name": "Tempered Flesh",
+          "start": 2000,
+          "end": 2999
+        },
+        {
+          "name": "Forged Bone",
+          "start": 3000,
+          "end": 3999
+        },
+        {
+          "name": "Marrow Cleansing",
+          "start": 4000,
+          "end": 4999
+        },
+        {
+          "name": "Organ Refinement",
+          "start": 5000,
+          "end": 5999
+        },
+        {
+          "name": "Blood Transformation",
+          "start": 6000,
+          "end": 6999
+        },
+        {
+          "name": "Adamant Body",
+          "start": 7000,
+          "end": 7999
+        },
+        {
+          "name": "Indestructible Frame",
+          "start": 8000,
+          "end": 8999
+        },
+        {
+          "name": "Immortal Physique",
+          "start": 9000,
+          "end": 9999
+        }
+      ]
+    },
+    "qi": {
+      "name": "Qi Cultivation",
+      "resource": "Qi",
+      "resource_base": 0,
+      "resource_per_progress": 10,
+      "recovery": {
+        "mode": "rate",
+        "hours": 168
+      },
+      "realms": [
+        {
+          "name": "Qi Sensing",
+          "start": 0,
+          "end": 999
+        },
+        {
+          "name": "Qi Gathering",
+          "start": 1000,
+          "end": 1999
+        },
+        {
+          "name": "Qi Condensation",
+          "start": 2000,
+          "end": 2999
+        },
+        {
+          "name": "Foundation Establishment",
+          "start": 3000,
+          "end": 3999
+        },
+        {
+          "name": "Core Formation",
+          "start": 4000,
+          "end": 4999
+        },
+        {
+          "name": "Golden Core",
+          "start": 5000,
+          "end": 5999
+        },
+        {
+          "name": "Meridian Ascension",
+          "start": 6000,
+          "end": 6999
+        },
+        {
+          "name": "Void Refinement",
+          "start": 7000,
+          "end": 7999
+        },
+        {
+          "name": "Heavenly Qi",
+          "start": 8000,
+          "end": 8999
+        },
+        {
+          "name": "Qi Sovereign",
+          "start": 9000,
+          "end": 9999
+        }
+      ]
+    },
+    "spirit": {
+      "name": "Spirit Cultivation",
+      "resource": "Shen",
+      "resource_base": 0,
+      "resource_per_progress": 5,
+      "recovery": {
+        "mode": "full",
+        "hours": 24
+      },
+      "realms": [
+        {
+          "name": "Clouded Mind",
+          "start": 0,
+          "end": 999
+        },
+        {
+          "name": "Spirit Awakening",
+          "start": 1000,
+          "end": 1999
+        },
+        {
+          "name": "Sea of Consciousness",
+          "start": 2000,
+          "end": 2999
+        },
+        {
+          "name": "Divine Sense",
+          "start": 3000,
+          "end": 3999
+        },
+        {
+          "name": "Spirit Manifestation",
+          "start": 4000,
+          "end": 4999
+        },
+        {
+          "name": "Mind Palace",
+          "start": 5000,
+          "end": 5999
+        },
+        {
+          "name": "Thousand Thoughts",
+          "start": 6000,
+          "end": 6999
+        },
+        {
+          "name": "Spirit Sovereign",
+          "start": 7000,
+          "end": 7999
+        },
+        {
+          "name": "Boundless Shen",
+          "start": 8000,
+          "end": 8999
+        },
+        {
+          "name": "Celestial Mind",
+          "start": 9000,
+          "end": 9999
+        }
+      ]
+    },
+    "soul": {
+      "name": "Soul Cultivation",
+      "resource": "Karma",
+      "resource_base": 0,
+      "resource_per_progress": 100,
+      "recovery": {
+        "mode": "none"
+      },
+      "realms": [
+        {
+          "name": "Mortal Soul",
+          "start": 0,
+          "end": 999
+        },
+        {
+          "name": "Karmic Awareness",
+          "start": 1000,
+          "end": 1999
+        },
+        {
+          "name": "Severed Threads",
+          "start": 2000,
+          "end": 2999
+        },
+        {
+          "name": "Karmic Weaving",
+          "start": 3000,
+          "end": 3999
+        },
+        {
+          "name": "Fate Reading",
+          "start": 4000,
+          "end": 4999
+        },
+        {
+          "name": "Destiny Binding",
+          "start": 5000,
+          "end": 5999
+        },
+        {
+          "name": "Cycle Breaking",
+          "start": 6000,
+          "end": 6999
+        },
+        {
+          "name": "Karmic Sovereign",
+          "start": 7000,
+          "end": 7999
+        },
+        {
+          "name": "Fate Unwritten",
+          "start": 8000,
+          "end": 8999
+        },
+        {
+          "name": "Eternal Soul",
+          "start": 9000,
+          "end": 9999
+        }
+      ]
+    }
+  }
+}

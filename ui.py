@@ -74,6 +74,7 @@ from actions import get_available_actions
 from state import (
     TRACKS,
     GameState,
+    format_percent,
     format_progress,
     has_save_file,
     list_saves,
@@ -377,13 +378,19 @@ def _cultivation_rows(state, with_progress):
     """One row per track, plus its resource.
 
     The main screen names the realm and nothing else; the character sheet
-    is where the progress number behind it belongs.
+    is where the number behind it belongs — where in the realm's range the
+    cultivator stands, and how far through it that is. 100.0% means the
+    ceiling, and a breakthrough is the only way on.
     """
     rows = []
     for track in TRACKS:
         stage = state.stage(track)
         if with_progress:
-            stage = f"{stage}  ({format_progress(state.progress(track))})"
+            realm = state.realm(track)
+            stage = (
+                f"{stage}  ({format_progress(state.progress(track))} / "
+                f"{realm.end} — {format_percent(state.realm_fraction(track))})"
+            )
         rows.append((track.name, stage))
         rows.append((f"  {track.resource}", _format_pool(state, track)))
     return rows
