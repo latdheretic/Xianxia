@@ -8,6 +8,12 @@ Design goal: model every action as (label, time_cost, resolve_fn) so
 that later (Phase 5) an interruption check can be inserted into
 resolution without restructuring this module.
 
+Time costs come in two shapes, matching state.py's two entry points:
+hours (anything up to 48) resolve through advance_hours(), whole days (3
+or more) through advance_days(), which also drops the character back to
+the day start hour. An action costing less than an hour is free — the
+clock has no finer grain than that.
+
 Phase 2: hardcode a small fixed list of test actions, e.g.
     - "View stats"        -> 0 time cost, no state change (just refresh UI)
     - "Meditate"           -> 1 month, +qi

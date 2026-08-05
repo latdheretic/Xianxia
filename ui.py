@@ -257,11 +257,17 @@ def _measure_natural_size(root, state):
     width, wrap the values to that, and the measurement would then report
     the narrow wrapped size — a base window too small to print its own
     stats unwrapped.
+
+    Labels flagged keep_wraplength are the exception: those are sentences,
+    not stat values, and measuring them on one line would size the window
+    around a paragraph.
     """
     probe = _build_content(root, state, scale=1.0, show_screen=lambda name: None)
     for widget in _walk(probe):
         widget.unbind("<Configure>")
-        if isinstance(widget, ttk.Label):
+        if isinstance(widget, ttk.Label) and not getattr(
+            widget, "keep_wraplength", False
+        ):
             widget.configure(wraplength=0)
     probe.update_idletasks()
     width, height = probe.winfo_reqwidth(), probe.winfo_reqheight()
@@ -323,7 +329,7 @@ def _build_content(root, state, scale, show_screen):
     _build_scene_panel(content, state, image_size, font).grid(
         row=0, column=1, sticky="nsew", padx=padding, pady=padding
     )
-    _build_right_panel(content, state, font).grid(
+    _build_right_panel(content, state, font, side_panel_width, padding).grid(
         row=0, column=2, sticky="nsew", padx=padding, pady=padding
     )
 
@@ -397,6 +403,42 @@ def _fill_stat_rows(frame, rows, font, padx=4, pady=1):
     frame.bind("<Configure>", on_configure)
 
 
+def _fill_text_lines(frame, lines, font, wrap, padx=4, pady=1):
+    """Stack sentence-style lines, wrapped to the panel rather than the window.
+
+    Unlike the "label: value" rows, these are sentences: letting them ask
+    for a single unwrapped line would drag the whole window's natural width
+    out with them. So they carry a design wrap width (which the natural-size
+    probe leaves alone, see _measure_natural_size) and still re-wrap to the
+    panel's real width once there is one.
+    """
+    frame.columnconfigure(0, weight=1)
+
+    labels = []
+    for i, line in enumerate(lines):
+        label = ttk.Label(
+            frame, text=line, font=font, justify="left", wraplength=max(1, wrap)
+        )
+        label.keep_wraplength = True
+        label.grid(row=i, column=0, sticky="w", padx=padx, pady=pady)
+        labels.append(label)
+
+    applied = {"wrap": wrap}
+
+    def on_configure(event):
+        cell = frame.grid_bbox(0, 0)
+        if not cell:
+            return
+        available = event.width - cell[0] * 2 - padx * 2
+        if available < MIN_VALUE_WRAP or available == applied["wrap"]:
+            return
+        applied["wrap"] = available
+        for label in labels:
+            label.configure(wraplength=available)
+
+    frame.bind("<Configure>", on_configure)
+
+
 def _bind_click_recursive(widget, callback):
     widget.bind("<Button-1>", callback)
     for child in widget.winfo_children():
@@ -448,30 +490,73 @@ def _build_character_screen(root, state, scale, show_screen):
     return content
 
 
-def _build_right_panel(parent, state, font):
-    if state.in_combat:
-        return _build_opponent_panel(parent, state, font)
-    return _build_world_panel(parent, state, font)
+def _build_right_panel(parent, state, font, panel_width, padding):
+    """Time on top, always; below it whatever the player is engaged with.
+
+    The context half switches on state.interacting_with: a person when the
+    player is dealing with one, otherwise the place they are standing in.
+    """
+    container = ttk.Frame(parent)
+    container.columnconfigure(0, weight=1)
+    # Only the context half stretches; the time block wants its natural height.
+    container.rowconfigure(1, weight=1)
+
+    _build_time_panel(container, state, font, panel_width - padding * 4).grid(
+        row=0, column=0, sticky="new", pady=(0, padding)
+    )
+
+    if state.interacting_with:
+        context = _build_character_panel(container, state, font)
+    else:
+        context = _build_location_panel(container, state, font, panel_width - padding * 4)
+    context.grid(row=1, column=0, sticky="nsew")
+
+    return container
 
 
-def _build_world_panel(parent, state, font):
-    frame = ttk.LabelFrame(parent, text="World")
+def _build_time_panel(parent, state, font, wrap):
+    frame = ttk.LabelFrame(parent, text="Time")
 
-    rows = [
-        ("Date", state.date_str),
-        ("Location", state.location),
-    ]
-    _fill_stat_rows(frame, rows, font)
+    _fill_text_lines(
+        frame,
+        [state.clock_str, state.date_str, state.era_str, state.journey_str],
+        font,
+        wrap,
+    )
     return frame
 
 
-def _build_opponent_panel(parent, state, font):
-    frame = ttk.LabelFrame(parent, text="Opponent")
+def _build_location_panel(parent, state, font, wrap):
+    frame = ttk.LabelFrame(parent, text="Location")
+    frame.columnconfigure(0, weight=1)
 
-    rows = [
-        ("Name", state.interacting_with or "Unknown"),
-        ("Health", f"{state.opponent_health} / {state.opponent_max_health}"),
-    ]
+    # Two sub-frames because the helpers each own their parent's <Configure>
+    # binding: the place is a stat value, the description is prose and has
+    # to wrap rather than demand a window wide enough to hold one line.
+    rows = ttk.Frame(frame)
+    rows.grid(row=0, column=0, sticky="ew")
+    _fill_stat_rows(rows, [("Place", state.location)], font)
+
+    description = ttk.Frame(frame)
+    description.grid(row=1, column=0, sticky="ew")
+    # Phase 4: generation.py supplies this per location.
+    _fill_text_lines(description, [state.location_detail], font, wrap)
+
+    return frame
+
+
+def _build_character_panel(parent, state, font):
+    frame = ttk.LabelFrame(parent, text="Character")
+
+    rows = [("Name", state.interacting_with)]
+    if state.interacting_stage:
+        rows.append(("Cultivation", state.interacting_stage))
+    # Health is combat information; outside a fight it is not the player's
+    # to know, so the row is simply absent.
+    if state.in_combat:
+        rows.append(
+            ("Health", f"{state.interacting_health} / {state.interacting_max_health}")
+        )
     _fill_stat_rows(frame, rows, font)
     return frame
 

@@ -22,11 +22,30 @@ by player-chosen actions that consume in-game time (from instant to months).
 - Scene/location art gets its own home under `images/` in Phase 4.
 
 ## Layout (Tkinter grid, single window)
-- Top-left: stats panel (name, cultivation stage, qi, health, age, etc.)
+- Top-left: player stats panel (name, stage, health, qi, spirit stones);
+  click it for the full character sheet screen
 - Top-middle: single static image for current scene/location
-- Top-right: menu buttons (Save, Load, Character Sheet, Inventory, etc.)
+- Top-right: time block (always visible) above a context block, which
+  shows either the location or the character being interacted with
+- Middle: last action result, full width
 - Bottom: scrollable list of available actions, each labeled with its
-  time cost (e.g. "Meditate at the spring — 1 month")
+  time cost (e.g. "Meditate at the spring — 1 month"), with Main Menu
+  anchored bottom-right
+
+## Time & calendar (decided)
+- 12 months of 30 days = 360-day years. Months are named for the zodiac
+  starting at the Tiger, so the year turns over on the first month of
+  spring (Tiger 1).
+- Years carry both a zodiac animal and an Imperial Era number. Era year 1
+  was a year of the Dragon, which anchors the cycle. A run's starting year
+  is rolled between 500 and 1500.
+- 24-hour days, whole hours only — no minutes or seconds. Anything under
+  an hour is instant as far as the clock is concerned.
+- Actions cost either hours (up to 48) or whole days (3+). A day-costed
+  action leaves the character starting again at the day start hour (6:00),
+  which is also where a new run begins.
+- The journey is tracked separately from the calendar: day-within-year and
+  year counted from the run's first day, so it survives those hour resets.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.
