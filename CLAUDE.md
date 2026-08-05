@@ -55,6 +55,30 @@ by player-chosen actions that consume in-game time (from instant to months).
   duration on the other. The era year lives on the character sheet, to
   keep the panel short.
 
+## Cultivation (decided)
+Four tracks advance in parallel, each with its own resource:
+
+| Track | Resource | Resource ceiling | Recovery |
+|---|---|---|---|
+| Body Tempering | Stamina | 100 + progress | full in 2 hours |
+| Qi Cultivation | Qi | 10 x progress | full in 1 week; qi cycling drives it x20 |
+| Spirit Cultivation | Shen | 5 x progress | a night's sleep, or any action of 24h+ |
+| Soul Cultivation | Karma | 100 x progress | never with time — events only |
+
+- Progress is a number starting at 0. Every whole 100 of it is one
+  cultivation realm, and each track has its own ladder of realm names.
+- The realm name is all the main screen shows. The raw number (two
+  decimals) belongs on the character sheet.
+- Progress cannot cross a hundred by itself: it stops at 99.99, 199.99 and
+  so on, and only a breakthrough carries a cultivator over. That is why
+  "ready to break through" is legible as 99.99.
+- Resource ceilings follow from progress, so cultivating widens the pool.
+  Only body tempering starts anyone with a usable pool; the other three
+  read 0 / 0 until that track is cultivated at all.
+- Actions resolve as spend time -> apply effect -> recover. Recovery comes
+  last on purpose: an action that deepens a track raises that resource's
+  ceiling, and the time it took should fill the new pool, not the old one.
+
 ## Core loop
 1. Game state loaded (or new game created) on launch.
 2. Available actions are generated based on current location/state.
@@ -105,6 +129,14 @@ directory), New Game and Exit.
 ## Open questions / decide later
 - Save file location: `save_data/` in project dir, or XDG-style
   `~/.local/share/<gamename>/`?
+- Do actions *spend* their track's resource, not just recover it? Nothing
+  drains stamina/qi/shen today. Stamina refills in two hours, so any cost
+  on an hour-long action is invisible by the time the player looks — a
+  cost model needs to account for that rather than be bolted on.
+- What triggers a breakthrough? The bottleneck and GameState.breakthrough()
+  exist, but nothing in the game calls it yet.
+- How does Karma come back? It has no natural recovery by design, so the
+  events that restore it are the only source.
 - Interruption mechanic design (Phase 5) — not needed yet, just keep
   actions structured so it can be retrofitted.
 

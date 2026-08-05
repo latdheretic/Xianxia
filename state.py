@@ -101,16 +101,180 @@ def _plural(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
+# --- cultivation ------------------------------------------------------------
+#
+# Four tracks advance in parallel. Each carries a progress number that starts
+# at 0 and climbs; every whole 100 of it is one cultivation realm, and the
+# realm is what the player sees on the main screen — the number itself is
+# detail for the character sheet.
+#
+# Progress cannot cross a hundred on its own. It piles up against
+# <realm ceiling> - 0.01, so a cultivator on the verge of their second realm
+# sits visibly at 99.99 until a breakthrough carries them over.
+PROGRESS_PER_REALM = 100
+BOTTLENECK_MARGIN = 0.01  # also the display precision: two decimals
+PROGRESS_DECIMALS = 2
+
+# Recovery periods, in hours: how long the resource takes to refill from empty.
+STAMINA_RECOVERY_HOURS = 2
+QI_RECOVERY_HOURS = 7 * 24  # a week
+# A night's sleep restores Shen; so does any action long enough to contain one.
+SHEN_RECOVERY_HOURS = 24
+# Qi cycling drives recovery far harder than idle time does.
+QI_CYCLING_MULTIPLIER = 20
+
+
+@dataclass(frozen=True)
+class CultivationTrack:
+    """Static description of one cultivation type.
+
+    `resource_base` and `resource_per_progress` give the resource ceiling:
+    max = base + per_progress * progress. Body tempering starts everyone
+    with a usable body (base 100); the other three give nothing at all
+    until their track is cultivated.
+    """
+
+    key: str
+    name: str
+    resource: str
+    progress_attr: str
+    resource_attr: str
+    resource_base: float
+    resource_per_progress: float
+    realms: tuple
+
+    def max_resource(self, progress: float) -> float:
+        return self.resource_base + self.resource_per_progress * progress
+
+    def realm_name(self, progress: float) -> str:
+        realm = int(progress // PROGRESS_PER_REALM)
+        if realm < len(self.realms):
+            return self.realms[realm]
+        # Past the charted ladder — name it rather than crash.
+        return f"{self.realms[-1]} (Realm {realm + 1})"
+
+
+BODY_REALMS = (
+    "Mortal Frame",
+    "Iron Skin",
+    "Tempered Flesh",
+    "Forged Bone",
+    "Marrow Cleansing",
+    "Organ Refinement",
+    "Blood Transformation",
+    "Adamant Body",
+    "Indestructible Frame",
+    "Immortal Physique",
+)
+QI_REALMS = (
+    "Qi Sensing",
+    "Qi Gathering",
+    "Qi Condensation",
+    "Foundation Establishment",
+    "Core Formation",
+    "Golden Core",
+    "Meridian Ascension",
+    "Void Refinement",
+    "Heavenly Qi",
+    "Qi Sovereign",
+)
+SPIRIT_REALMS = (
+    "Clouded Mind",
+    "Spirit Awakening",
+    "Sea of Consciousness",
+    "Divine Sense",
+    "Spirit Manifestation",
+    "Mind Palace",
+    "Thousand Thoughts",
+    "Spirit Sovereign",
+    "Boundless Shen",
+    "Celestial Mind",
+)
+SOUL_REALMS = (
+    "Mortal Soul",
+    "Karmic Awareness",
+    "Severed Threads",
+    "Karmic Weaving",
+    "Fate Reading",
+    "Destiny Binding",
+    "Cycle Breaking",
+    "Karmic Sovereign",
+    "Fate Unwritten",
+    "Eternal Soul",
+)
+
+TRACKS = (
+    CultivationTrack(
+        key="body",
+        name="Body Tempering",
+        resource="Stamina",
+        progress_attr="body_progress",
+        resource_attr="stamina",
+        resource_base=100,
+        resource_per_progress=1,
+        realms=BODY_REALMS,
+    ),
+    CultivationTrack(
+        key="qi",
+        name="Qi Cultivation",
+        resource="Qi",
+        progress_attr="qi_progress",
+        resource_attr="qi",
+        resource_base=0,
+        resource_per_progress=10,
+        realms=QI_REALMS,
+    ),
+    CultivationTrack(
+        key="spirit",
+        name="Spirit Cultivation",
+        resource="Shen",
+        progress_attr="spirit_progress",
+        resource_attr="shen",
+        resource_base=0,
+        resource_per_progress=5,
+        realms=SPIRIT_REALMS,
+    ),
+    CultivationTrack(
+        key="soul",
+        name="Soul Cultivation",
+        resource="Karma",
+        progress_attr="soul_progress",
+        resource_attr="karma",
+        resource_base=0,
+        resource_per_progress=100,
+        realms=SOUL_REALMS,
+    ),
+)
+
+TRACKS_BY_KEY = {track.key: track for track in TRACKS}
+
+
+def format_progress(progress: float) -> str:
+    return f"{progress:.{PROGRESS_DECIMALS}f}"
+
+
 @dataclass
 class GameState:
     name: str = "Wanderer"
-    stage: str = "Body Tempering — 1st Layer"
     age: int = 16
     health: int = 100
     max_health: int = 100
-    qi: int = 10
-    max_qi: int = 100
     currency: int = 0
+
+    # --- cultivation ---
+    # Progress along each track; the realm names and resource ceilings are
+    # derived from these, never stored alongside them.
+    body_progress: float = 0.0
+    qi_progress: float = 0.0
+    spirit_progress: float = 0.0
+    soul_progress: float = 0.0
+    # Current pools. None means "start full", resolved in __post_init__ once
+    # the ceilings are known — which for everything but stamina is zero
+    # until that track has been cultivated at all.
+    stamina: Optional[float] = None
+    qi: Optional[float] = None
+    shen: Optional[float] = None
+    karma: Optional[float] = None
 
     # --- clock and calendar ---
     hour: int = DAY_START_HOUR
@@ -147,10 +311,96 @@ class GameState:
             self.start_year = self.year
             self.start_month = self.month
             self.start_day = self.day
+        for track in TRACKS:
+            if getattr(self, track.resource_attr) is None:
+                setattr(self, track.resource_attr, self.max_resource(track))
 
     @classmethod
     def new_game(cls) -> "GameState":
         return cls()
+
+    # --- cultivation --------------------------------------------------------
+
+    def progress(self, track: CultivationTrack) -> float:
+        return getattr(self, track.progress_attr)
+
+    def stage(self, track: CultivationTrack) -> str:
+        """The written realm — what the main screen shows for this track."""
+        return track.realm_name(self.progress(track))
+
+    def max_resource(self, track: CultivationTrack) -> float:
+        return track.max_resource(self.progress(track))
+
+    def resource(self, track: CultivationTrack) -> float:
+        return getattr(self, track.resource_attr)
+
+    def bottleneck(self, track: CultivationTrack) -> float:
+        """The most progress this track can reach without a breakthrough."""
+        realm = int(self.progress(track) // PROGRESS_PER_REALM)
+        return (realm + 1) * PROGRESS_PER_REALM - BOTTLENECK_MARGIN
+
+    def at_bottleneck(self, track: CultivationTrack) -> bool:
+        return self.progress(track) >= self.bottleneck(track)
+
+    def add_progress(self, track: CultivationTrack, amount: float) -> float:
+        """Advance a track, stopping dead at the realm bottleneck.
+
+        Returns how much progress was actually gained, which is less than
+        asked for when the cultivator runs into the ceiling.
+        """
+        if amount <= 0:
+            return 0.0
+        before = self.progress(track)
+        after = min(round(before + amount, PROGRESS_DECIMALS), self.bottleneck(track))
+        setattr(self, track.progress_attr, after)
+        self._clamp_resource(track)
+        return round(after - before, PROGRESS_DECIMALS)
+
+    def breakthrough(self, track: CultivationTrack) -> bool:
+        """Carry a bottlenecked track over into the next realm."""
+        if not self.at_bottleneck(track):
+            return False
+        realm = int(self.progress(track) // PROGRESS_PER_REALM)
+        setattr(self, track.progress_attr, float((realm + 1) * PROGRESS_PER_REALM))
+        return True
+
+    def _clamp_resource(self, track: CultivationTrack) -> None:
+        """Keep a pool inside its ceiling; progress moves that ceiling."""
+        capped = min(self.resource(track), self.max_resource(track))
+        setattr(self, track.resource_attr, max(0.0, capped))
+
+    def spend_resource(self, track: CultivationTrack, amount: float) -> float:
+        """Draw on a pool, taking whatever is left if it is short."""
+        spent = min(amount, self.resource(track))
+        setattr(self, track.resource_attr, self.resource(track) - spent)
+        return spent
+
+    def restore_resource(self, track: CultivationTrack, amount: float) -> None:
+        setattr(self, track.resource_attr, self.resource(track) + amount)
+        self._clamp_resource(track)
+
+    def recover_over(
+        self, hours: float, *, qi_multiplier: float = 1, full_shen: bool = False
+    ) -> None:
+        """Refill pools for time passed. Karma is not among them.
+
+        Each track refills at max/period per hour, so the rates track the
+        ceilings as cultivation deepens: stamina is whole again in two
+        hours, qi takes a week unless cycling drives it, and shen comes
+        back with a night's sleep rather than trickling in.
+        """
+        if hours <= 0:
+            return
+
+        body, qi, spirit = (TRACKS_BY_KEY[key] for key in ("body", "qi", "spirit"))
+
+        self.restore_resource(body, self.max_resource(body) * hours / STAMINA_RECOVERY_HOURS)
+        self.restore_resource(
+            qi, self.max_resource(qi) * hours * qi_multiplier / QI_RECOVERY_HOURS
+        )
+        if full_shen or hours >= SHEN_RECOVERY_HOURS:
+            self.restore_resource(spirit, self.max_resource(spirit))
+        # Karma has no natural recovery at all — only events return it.
 
     # --- advancing time -----------------------------------------------------
     #

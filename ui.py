@@ -71,7 +71,13 @@ from pathlib import Path
 from tkinter import ttk
 
 from actions import get_available_actions
-from state import GameState, has_save_file, list_saves
+from state import (
+    TRACKS,
+    GameState,
+    format_progress,
+    has_save_file,
+    list_saves,
+)
 
 try:
     from PIL import Image, ImageOps, ImageTk
@@ -362,16 +368,36 @@ def _build_content(root, state, scale, show_screen, do_action):
     return content
 
 
+def _format_pool(state, track):
+    """A resource as "current / ceiling", both rounded to whole points."""
+    return f"{state.resource(track):.0f} / {state.max_resource(track):.0f}"
+
+
+def _cultivation_rows(state, with_progress):
+    """One row per track, plus its resource.
+
+    The main screen names the realm and nothing else; the character sheet
+    is where the progress number behind it belongs.
+    """
+    rows = []
+    for track in TRACKS:
+        stage = state.stage(track)
+        if with_progress:
+            stage = f"{stage}  ({format_progress(state.progress(track))})"
+        rows.append((track.name, stage))
+        rows.append((f"  {track.resource}", _format_pool(state, track)))
+    return rows
+
+
 def _build_player_panel(parent, state, font, show_screen):
     frame = ttk.LabelFrame(parent, text="Player (click for details)")
 
     rows = [
         ("Name", state.name),
-        ("Stage", state.stage),
         ("Health", f"{state.health} / {state.max_health}"),
-        ("Qi", f"{state.qi} / {state.max_qi}"),
         ("Spirit Stones", str(state.currency)),
     ]
+    rows += _cultivation_rows(state, with_progress=False)
     _fill_stat_rows(frame, rows, font)
 
     _bind_click_recursive(frame, lambda event: show_screen(SCREEN_CHARACTER))
@@ -488,11 +514,14 @@ def _build_character_screen(root, state, scale, show_screen):
 
     rows = [
         ("Name", state.name),
-        ("Cultivation Stage", state.stage),
         ("Age", str(state.age)),
         ("Health", f"{state.health} / {state.max_health}"),
-        ("Qi", f"{state.qi} / {state.max_qi}"),
         ("Spirit Stones", str(state.currency)),
+    ]
+    # Here the realms come with the raw progress behind them, which is the
+    # difference between this screen and the panel it opens from.
+    rows += _cultivation_rows(state, with_progress=True)
+    rows += [
         ("Location", state.location),
         ("Date", state.date_str),
     ]
