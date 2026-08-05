@@ -8,6 +8,11 @@ Planned responsibilities once we get here:
 - Generate new locations/areas as the player explores.
 - Generate location-specific flavor (and eventually the image reference
   to display for that scene).
+- Threat level: a potentially hostile location should advertise the
+  average power level of what lives there, so the player can weigh it
+  against their own (GameState.power_level) before walking in. That
+  number belongs in the location panel next to the description, and
+  peaceful locations should leave it off rather than print a zero.
 - Seasonal effects: temperate locations should carry a line describing
   how the current season is treating them, shown in the location panel
   alongside the description. The calendar already gives us the season

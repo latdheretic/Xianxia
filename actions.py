@@ -29,7 +29,14 @@ location/state data supplied by generation.py instead of hardcoded here.
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from state import DAYS_PER_MONTH
+from state import (
+    CURRENCIES_BY_KEY,
+    DAYS_PER_MONTH,
+    HOURS_PER_DAY,
+    QI_CYCLING_MULTIPLIER,
+    TRACKS_BY_KEY,
+    format_progress,
+)
 
 # The costing convention from CLAUDE.md, enforced below.
 MAX_ACTION_HOURS = 48
@@ -70,6 +77,12 @@ class Action:
     hours: int = 0
     days: int = 0
     effect: Optional[Callable] = field(default=None, repr=False)
+    # Recovery modifiers for the time this action spends. Qi cycling drives
+    # qi back far faster than idle time; an action counted as proper rest
+    # refills the full-recovery tracks outright, which time alone only does
+    # across a whole day.
+    qi_multiplier: float = 1
+    sleeps: bool = False
 
     def __post_init__(self):
         if self.hours and self.days:
@@ -91,6 +104,11 @@ class Action:
     def time_cost_label(self) -> str:
         return format_time_cost(self.hours, self.days)
 
+    @property
+    def elapsed_hours(self) -> int:
+        """The cost as hours, whichever way it was written — for recovery."""
+        return self.days * HOURS_PER_DAY if self.days else self.hours
+
     def spend_time(self, state) -> None:
         if self.days:
             state.advance_days(self.days)
@@ -98,7 +116,14 @@ class Action:
             state.advance_hours(self.hours)
 
     def resolve(self, state) -> str:
-        """Spend the time, apply the effect, and report what happened.
+        """Spend the time, apply the effect, recover, report what happened.
+
+        Recovery comes last because an action can deepen a track while it
+        runs, and deepening a track raises that resource's ceiling — qi
+        cycling is exactly this. Recovering first would fill the pool the
+        cultivator had before the session rather than the one they have
+        after it, and cycling from a standing start would yield no qi at
+        all.
 
         Phase 5 inserts the interruption check here: between (or inside)
         spend_time and the effect, so a disturbed action can cost part of
@@ -109,6 +134,11 @@ class Action:
             message = f"You {self.label[0].lower()}{self.label[1:]}."
         else:
             message = self.effect(state)
+        state.recover_over(
+            self.elapsed_hours,
+            qi_multiplier=self.qi_multiplier,
+            slept=self.sleeps,
+        )
         state.last_action_result = message
         return message
 
@@ -131,31 +161,68 @@ def _travel_to(destination):
 def _rest(state):
     healed = min(15, state.max_health - state.health)
     state.health += healed
+    # Shen came back with the sleep itself, via the action's sleeps flag.
     if healed:
         return f"You sleep the night through and recover {healed} health."
     return "You sleep the night through. There was nothing left to mend."
 
 
-def _meditate(state):
-    gained = min(20, state.max_qi - state.qi)
-    state.qi += gained
-    if gained:
+def _cycle_qi(state):
+    """The one action that both refills qi and deepens the qi track."""
+    track = TRACKS_BY_KEY["qi"]
+    gained = state.add_progress(track, 4)
+    if not gained:
         return (
-            "You sit with the spring until the month turns, and draw "
-            f"{gained} qi into your dantian."
+            "You cycle the breath until the meridians ring, but the realm "
+            "will not widen further — only a breakthrough opens it now."
         )
-    return "You sit with the spring until the month turns. Your dantian is already full."
+    return (
+        "You cycle the breath through every meridian, drawing qi back far "
+        f"faster than stillness would. Qi Cultivation +{format_progress(gained)}."
+    )
+
+
+def _meditate(state):
+    track = TRACKS_BY_KEY["spirit"]
+    gained = state.add_progress(track, 60)
+    if not gained:
+        return (
+            "You sit with the spring until the month turns. Your spirit "
+            "presses against its ceiling and will not pass without a "
+            "breakthrough."
+        )
+    return (
+        "You sit with the spring until the month turns, and your sense of "
+        f"the world sharpens. Spirit Cultivation +{format_progress(gained)}."
+    )
 
 
 def _harvest(state):
-    state.currency += 2
-    return "You cut what the ridge will spare. The herbs fetch 2 spirit stones."
+    # Silver, not spirit stones: mortal buyers are what an early cultivator
+    # has access to, and silver is what the early game runs on.
+    state.earn(CURRENCIES_BY_KEY["silver"], 12)
+    return "You cut what the ridge will spare. The herbs fetch 12 silver taels."
 
 
 def _spar(state):
+    # No stamina cost: stamina refills in two hours, so any cost on an
+    # hour-long action would be gone before the player saw it, and the
+    # message would read as a bug next to a full bar. Whether actions
+    # should draw on their track's resource at all is a design decision
+    # still open — see CLAUDE.md.
+    body = TRACKS_BY_KEY["body"]
     lost = min(5, state.health)
     state.health -= lost
-    return f"You trade blows until your guard fails. {lost} health, and a lesson."
+    gained = state.add_progress(body, 3)
+    if not gained:
+        return (
+            f"You trade blows until your guard fails — {lost} health for "
+            "nothing. Your body has no more to learn at this realm."
+        )
+    return (
+        f"You trade blows until your guard fails. {lost} health spent, and "
+        f"Body Tempering +{format_progress(gained)}."
+    )
 
 
 def _browse(state):
@@ -173,7 +240,13 @@ def get_available_actions(state):
 
     return [
         Action(f"Travel to {destination}", hours=48, effect=_travel_to(destination)),
-        Action("Rest", hours=8, effect=_rest),
+        Action("Rest", hours=8, effect=_rest, sleeps=True),
+        Action(
+            "Cycle qi",
+            hours=4,
+            effect=_cycle_qi,
+            qi_multiplier=QI_CYCLING_MULTIPLIER,
+        ),
         Action("Meditate at the spring", days=DAYS_PER_MONTH, effect=_meditate),
         Action("Harvest spirit herbs", hours=4, effect=_harvest),
         Action("Spar with a fellow disciple", hours=1, effect=_spar),

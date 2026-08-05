@@ -16,14 +16,19 @@ by player-chosen actions that consume in-game time (from instant to months).
 - JSON for save files (human-readable, easy to debug/patch by hand)
 - No external game engine, no network, no database
 
-## Assets
+## Assets & data
 - `images/system/` — chrome that belongs to the game itself (menu
   backgrounds etc.); see the README there for ratio/cropping rules.
 - Scene/location art gets its own home under `images/` in Phase 4.
+- `data/cultivation.json` — realm ladders, resource ceilings and recovery
+  rules. Tunable values belong here rather than in code; state.py only
+  knows how to read and validate the file.
 
 ## Layout (Tkinter grid, single window)
-- Top-left: player stats panel (name, stage, health, qi, spirit stones);
-  click it for the full character sheet screen
+- Top-left: three stacked blocks, mirroring the right column — who you
+  are (name, sect if any), what you have cultivated (health, power level,
+  the four tracks and their pools), and what you can spend (the three
+  currencies). Clicking anywhere in the column opens the character sheet
 - Top-middle: single static image for current scene/location
 - Top-right: time block (always visible) above a context block, which
   shows either the location or the character being interacted with
@@ -54,6 +59,72 @@ by player-chosen actions that consume in-game time (from instant to months).
 - The time panel shows two lines: the clock and date on one, the journey
   duration on the other. The era year lives on the character sheet, to
   keep the panel short.
+
+## Cultivation (decided)
+Four tracks advance in parallel, each with its own resource:
+
+| Track | Resource | Resource ceiling | Recovery |
+|---|---|---|---|
+| Body Tempering | Stamina | 100 + progress | full in 2 hours |
+| Qi Cultivation | Qi | 10 x progress | full in 1 week; qi cycling drives it x20 |
+| Spirit Cultivation | Shen | 5 x progress | a night's sleep, or any action of 24h+ |
+| Soul Cultivation | Karma | 100 x progress | never with time — events only |
+
+- **The realm ladders live in `data/cultivation.json`, not in code.** Realm
+  names and their progress ranges, the resource ceilings and the recovery
+  rules all come from that file, so tuning the numbers never means editing
+  state.py. The file is required — a missing or malformed one raises with
+  a specific complaint rather than falling back to buried defaults, since
+  silent defaults would hide a typo in the data.
+- Progress is an integer starting at 0. Realms are contiguous ranges,
+  1000 wide by default: 0-999, 1000-1999, and so on.
+- The realm name is all the main screen shows. The character sheet adds
+  the raw value, the range it sits in, and how far through it that is.
+- Progress cannot leave its realm by itself: it stops at the top of the
+  range, and only a breakthrough carries a cultivator over. The character
+  sheet shows that state as exactly 100.0%. At the top of a ladder a
+  breakthrough fails — define another realm in the data file to go on.
+- Resource ceilings follow from progress, so cultivating widens the pool.
+  Only body tempering starts anyone with a usable pool; the other three
+  read 0 / 0 until that track is cultivated at all.
+- Actions resolve as spend time -> apply effect -> recover. Recovery comes
+  last on purpose: an action that deepens a track raises that resource's
+  ceiling, and the time it took should fill the new pool, not the old one.
+
+**Health** is derived too: `base_health` (in the data file, 100) plus power
+level, so cultivating makes a character tougher without anything storing a
+maximum. Perks and gear will modify the same value once generation exists —
+they belong in that calculation, not in a saved number. Only *current*
+health is state; a new character starts whole, and raising the ceiling
+mid-run does not heal anyone.
+
+**Power level** is derived, not stored: the highest of the four progress
+values plus the average of the other three, rounded to the nearest whole
+number. Depth counts for more than breadth, and a single track carries a
+cultivator on its own. It heads the cultivation block on both the side
+panel and the character sheet, since it summarises the tracks under it.
+Later it drives technique strength, and hostile locations will advertise
+their own so the player can judge a fight before taking it.
+
+## Currency (decided)
+Three kinds, each mattering at a different point in a run:
+
+| Currency | What it is |
+|---|---|
+| Silver Taels | Mortal money; what the early game runs on |
+| Spirit Stones | Barter between cultivators; matters more the higher you climb |
+| Contribution Points | Awarded for sect missions, spent on training and resources |
+
+Balances live in a `wallet` dict keyed like `CURRENCIES`, so a fourth kind
+needs no new field on GameState. Sect affiliation is optional, and both
+sect-dependent rows disappear together when there is none: no Sect row and
+no Contribution Points row, rather than empty or zeroed ones.
+
+Contribution points are standing inside one *particular* sect, so changing
+affiliation wipes them — leaving loses the favour, and joining somewhere
+new starts over as a stranger. Change sect through `GameState.set_sect()`
+(or `leave_sect()`) rather than assigning to `.sect`, which would carry
+one sect's favour into another's ledger.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.
@@ -105,6 +176,14 @@ directory), New Game and Exit.
 ## Open questions / decide later
 - Save file location: `save_data/` in project dir, or XDG-style
   `~/.local/share/<gamename>/`?
+- Do actions *spend* their track's resource, not just recover it? Nothing
+  drains stamina/qi/shen today. Stamina refills in two hours, so any cost
+  on an hour-long action is invisible by the time the player looks — a
+  cost model needs to account for that rather than be bolted on.
+- What triggers a breakthrough? The bottleneck and GameState.breakthrough()
+  exist, but nothing in the game calls it yet.
+- How does Karma come back? It has no natural recovery by design, so the
+  events that restore it are the only source.
 - Interruption mechanic design (Phase 5) — not needed yet, just keep
   actions structured so it can be retrofitted.
 
