@@ -22,11 +22,38 @@ by player-chosen actions that consume in-game time (from instant to months).
 - Scene/location art gets its own home under `images/` in Phase 4.
 
 ## Layout (Tkinter grid, single window)
-- Top-left: stats panel (name, cultivation stage, qi, health, age, etc.)
+- Top-left: player stats panel (name, stage, health, qi, spirit stones);
+  click it for the full character sheet screen
 - Top-middle: single static image for current scene/location
-- Top-right: menu buttons (Save, Load, Character Sheet, Inventory, etc.)
+- Top-right: time block (always visible) above a context block, which
+  shows either the location or the character being interacted with
+- Middle: last action result, full width
 - Bottom: scrollable list of available actions, each labeled with its
-  time cost (e.g. "Meditate at the spring — 1 month")
+  time cost (e.g. "Meditate at the spring — 1 month"), with Main Menu
+  anchored bottom-right
+
+## Time & calendar (decided)
+- 12 months of 30 days = 360-day years. Months are named for the zodiac
+  starting at the Tiger, so the year turns over on the first month of
+  spring (Tiger 1).
+- Only months carry a zodiac animal. Years are numbered by the Imperial
+  Era alone — naming the year as well read as clutter in the time panel.
+  A run's starting year is rolled between 500 and 1500.
+- Days run on whole hours, no minutes or seconds; anything under an hour
+  is instant as far as the clock is concerned. Displayed on a 12-hour
+  clock ("6:00 AM"), stored as 0-23.
+- Actions cost either hours (up to 48) or whole days (3+). A day-costed
+  action leaves the character starting again at the day start hour (6:00),
+  which is also where a new run begins.
+- The journey is tracked separately from the calendar, as elapsed days and
+  completed years from the run's first day, so it survives those hour
+  resets. It reads as a duration ("You have been cultivating for 1 day and
+  4 years"); either half drops out at zero, so the first year shows only
+  days and an exact anniversary shows only years. The sole exception is
+  day one, which would otherwise have nothing left to print.
+- The time panel shows two lines: the clock and date on one, the journey
+  duration on the other. The era year lives on the character sheet, to
+  keep the panel short.
 
 ## Core loop
 1. Game state loaded (or new game created) on launch.
